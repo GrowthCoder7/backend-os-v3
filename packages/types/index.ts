@@ -169,7 +169,8 @@ export interface BackendIR {
 
 export interface GeneratedArtifacts {
   prisma?: string;
-  server?: string;      // Express initialization
-  routes?: string;      // Express router definitions
-  controllers?: string; // Route handlers
+  server?: string;      
+  routes?: string;      
+  controllers?: string; 
+  fileSystem?: Record<string, string>; // NEW: Framework-independent virtual file system
 }
