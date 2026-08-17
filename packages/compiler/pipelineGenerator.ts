@@ -1,11 +1,6 @@
-import { 
-  ArchitectureGraph, 
-  BackendIR, 
-  CompiledModel, 
-  CompiledRoute, 
-  CompiledWorkflow 
-} from "@repo/types";
+import { ArchitectureGraph, BackendIR } from "@repo/types";
 import { validateGraph, ValidationIssue } from "@repo/validation";
+import { analyzeGraph } from "@repo/semantic";
 
 export interface CompilationResult {
   success: boolean;
@@ -13,16 +8,10 @@ export interface CompilationResult {
   ir: BackendIR | null;
 }
 
-/**
- * Lowers the Architecture Graph into the standard Backend IR.
- * Halts if structural errors are detected by the Validation Engine.
- */
 export const compileGraph = (graph: ArchitectureGraph): CompilationResult => {
-  // 1. Pre-flight Validation
   const issues = validateGraph(graph);
   const fatalErrors = issues.filter((issue) => issue.severity === "error");
 
-  // 2. Compilation Halt Check
   if (fatalErrors.length > 0) {
     return {
       success: false,
@@ -31,21 +20,19 @@ export const compileGraph = (graph: ArchitectureGraph): CompilationResult => {
     };
   }
 
-  // 3. Generate Backend Intermediate Representation (IR)
+  const semanticContext = analyzeGraph(graph);
+
   const ir: BackendIR = {
     database: {
-      models: Object.values(graph.entities).map((entity) => ({
+      models: Array.from(semanticContext.entityMap.values()).map((entity) => ({
         tableName: entity.name.toLowerCase(),
         primaryKey: entity.primaryKey,
         fields: [...entity.fields],
-        relations: graph.relations.filter(
-          (r) => r.source === entity.name || r.target === entity.name
-        ),
+        relations: semanticContext.relationsByEntity.get(entity.name) || [],
       })),
     },
-    
     apis: {
-      routes: graph.endpoints.map((ep) => ({
+      routes: Array.from(semanticContext.endpointsByEntity.values()).flat().map((ep) => ({
         method: ep.method.toUpperCase(),
         path: ep.path,
         handlerId: `${ep.method.toLowerCase()}_${ep.entity.toLowerCase()}`,
@@ -53,26 +40,23 @@ export const compileGraph = (graph: ArchitectureGraph): CompilationResult => {
         action: ep.action,
       })),
     },
-
     workflows: {
-      workflows: graph.workflows.map((wf) => ({
+      workflows: semanticContext.graph.workflows.map((wf) => ({
         triggerEvent: wf.triggerEvent,
         executionSteps: wf.steps.length,
         steps: [...wf.steps],
       })),
     },
-
-    events: { ...graph.events },
-    
+    events: { ...semanticContext.graph.events },
     metadata: {
       version: "1.0.0",
-      generatedAt: new Date().toISOString(),
+      generatedAt: semanticContext.graph.metadata.updatedAt,
     },
   };
 
   return {
     success: true,
-    issues, // Pass along any warnings
+    issues, 
     ir,
   };
 };

@@ -76,6 +76,9 @@ importers:
 
   packages/compiler:
     dependencies:
+      '@repo/semantic':
+        specifier: workspace:*
+        version: link:../semantic
       '@repo/types':
         specifier: workspace:*
         version: link:../types
@@ -148,6 +151,12 @@ importers:
       '@repo/compiler':
         specifier: workspace:*
         version: link:../compiler
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/semantic:
+    dependencies:
       '@repo/types':
         specifier: workspace:*
         version: link:../types

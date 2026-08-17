@@ -5,6 +5,7 @@
   "types": "./index.ts",
   "dependencies": {
     "@repo/types": "workspace:*",
-    "@repo/validation": "workspace:*"
+    "@repo/validation": "workspace:*",
+    "@repo/semantic": "workspace:*"
   }
 }
