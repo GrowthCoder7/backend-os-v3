@@ -8,13 +8,15 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "verify:sprint2": "tsx verify-sprint2.ts",
-    "verify:sprint3": "tsx verify-sprint3.ts"
+    "verify:sprint3": "tsx verify-sprint3.ts",
+    "test": "vitest run"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
     "turbo": "^2.10.10",
     "typescript": "5.9.2",
-    "tsx": "^4.23.12"
+    "tsx": "^4.23.12",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "zustand": "^5.0.12"

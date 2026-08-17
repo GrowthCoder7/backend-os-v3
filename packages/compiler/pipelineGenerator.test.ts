@@ -5,7 +5,7 @@ import { ArchitectureGraph } from "@repo/types";
 describe("Compiler Pipeline", () => {
   const validGraph: ArchitectureGraph = {
     metadata: { id: "1", name: "test", createdAt: "2026-08-17T00:00:00.000Z", updatedAt: "2026-08-17T00:00:00.000Z", compilerVersion: "1", schemaVersion: "1" },
-    entities: { "User": { name: "User", primaryKey: "id", fields: [{name: "id", type: "string", required: true}] } },
+    entities: { "User": { name: "User", primaryKey: "id", fields: [{name: "id", type: "string", required: true}, {name: "friendId", type: "string", required: false}] } },
     relations: [{ source: "User", sourceField: "id", target: "User", targetField: "friendId", type: "one-to-many" }],
     endpoints: [{ method: "GET", path: "/users", entity: "User", action: "read" }],
     events: { "UserCreated": { name: "UserCreated", payloadSchema: {} } },
