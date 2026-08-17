@@ -1,0 +1,13 @@
+{
+  "name": "@repo/types",
+  "version": "1.0.0",
+  "description": "Shared Architecture Graph AST and Type Definitions",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

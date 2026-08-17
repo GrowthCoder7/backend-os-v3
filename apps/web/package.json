@@ -12,6 +12,10 @@
   },
   "dependencies": {
     "@repo/ui": "workspace:*",
+    "@repo/store": "workspace:*",
+    "@repo/types": "workspace:*",
+    "@repo/validation": "workspace:*",
+    "@repo/compiler": "workspace:*",
     "next": "16.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

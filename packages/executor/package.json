@@ -1,0 +1,11 @@
+{
+  "name": "@repo/executor",
+  "version": "1.0.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@repo/types": "workspace:*",
+    "@repo/validation": "workspace:*",
+    "@repo/operations": "workspace:*"
+  }
+}

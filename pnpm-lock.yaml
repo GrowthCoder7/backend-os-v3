@@ -20,9 +20,21 @@ importers:
 
   apps/web:
     dependencies:
+      '@repo/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@repo/store':
+        specifier: workspace:*
+        version: link:../../packages/store
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@repo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@repo/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       next:
         specifier: 16.3.0
         version: 16.3.0(@types/node@22.20.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -54,6 +66,15 @@ importers:
       typescript:
         specifier: 5.9.2
         version: 5.9.2
+
+  packages/compiler:
+    dependencies:
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
+      '@repo/validation':
+        specifier: workspace:*
+        version: link:../validation
 
   packages/eslint-config:
     devDependencies:
@@ -91,6 +112,66 @@ importers:
         specifier: ^8.50.0
         version: 8.67.0(eslint@9.39.5(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.2)
 
+  packages/executor:
+    dependencies:
+      '@repo/operations':
+        specifier: workspace:*
+        version: link:../operations
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
+      '@repo/validation':
+        specifier: workspace:*
+        version: link:../validation
+
+  packages/operations:
+    dependencies:
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/plugins:
+    dependencies:
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/runtime:
+    dependencies:
+      '@repo/compiler':
+        specifier: workspace:*
+        version: link:../compiler
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/store:
+    dependencies:
+      '@repo/executor':
+        specifier: workspace:*
+        version: link:../executor
+      '@repo/operations':
+        specifier: workspace:*
+        version: link:../operations
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
+      '@repo/validation':
+        specifier: workspace:*
+        version: link:../validation
+      immer:
+        specifier: ^10.0.3
+        version: 10.2.0
+      zustand:
+        specifier: ^5.0.12
+        version: 5.0.15(@types/react@19.2.2)(immer@10.2.0)(react@19.2.8)
+
+  packages/types:
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
   packages/typescript-config: {}
 
   packages/ui:
@@ -123,6 +204,12 @@ importers:
       typescript:
         specifier: 5.9.2
         version: 5.9.2
+
+  packages/validation:
+    dependencies:
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
 
 packages:
 
@@ -950,6 +1037,9 @@ packages:
     resolution: {integrity: sha512-BAg6QkE8W+TuQLrrw0Ugr7HegXduRuuj8/ti2kSOc+jz1dmx8/WNcjr6XGnq5YpDWxFwwaavqD0+jIUOKelTsw==}
     engines: {node: '>= 4'}
 
+  immer@10.2.0:
+    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
+
   import-fresh@3.3.1:
     resolution: {integrity: sha512-TR3KfrTZTYLPB6jUjfx6MF9WcWrHL9su5TObK4ZkYgBdWKPOFoSoQIdEuTuR82pmtxH2spWG9h6etwfr1pLBqQ==}
     engines: {node: '>=6'}
@@ -1514,6 +1604,24 @@ packages:
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
+
+  zustand@5.0.15:
+    resolution: {integrity: sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
 
 snapshots:
 
@@ -2420,6 +2528,8 @@ snapshots:
 
   ignore@7.0.6: {}
 
+  immer@10.2.0: {}
+
   import-fresh@3.3.1:
     dependencies:
       parent-module: 1.0.1
@@ -3110,3 +3220,9 @@ snapshots:
   word-wrap@1.2.5: {}
 
   yocto-queue@0.1.0: {}
+
+  zustand@5.0.15(@types/react@19.2.2)(immer@10.2.0)(react@19.2.8):
+    optionalDependencies:
+      '@types/react': 19.2.2
+      immer: 10.2.0
+      react: 19.2.8

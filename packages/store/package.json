@@ -1,0 +1,14 @@
+{
+  "name": "@repo/store",
+  "version": "1.0.0",
+  "main": "./graphStore.ts",
+  "types": "./graphStore.ts",
+  "dependencies": {
+    "@repo/types": "workspace:*",
+    "@repo/executor": "workspace:*",
+    "@repo/operations": "workspace:*",
+    "@repo/validation": "workspace:*",
+    "zustand": "^5.0.12",
+    "immer": "^10.0.3"
+  }
+}
