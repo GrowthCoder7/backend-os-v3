@@ -9,6 +9,7 @@
     "check-types": "turbo run check-types",
     "verify:sprint2": "tsx verify-sprint2.ts",
     "verify:sprint3": "tsx verify-sprint3.ts",
+    "verify:sprint4":"tsx verify-sprint4.ts",
     "test": "vitest run"
   },
   "devDependencies": {

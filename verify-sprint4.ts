@@ -131,11 +131,11 @@ function runVerification() {
     fs.writeFileSync(fullPath, content);
   }
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({ name: "mvp", dependencies: {} }));
-  fs.writeFileSync(path.join(outDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "es2022", moduleResolution: "node", experimentalDecorators: true } }));
+  fs.writeFileSync(path.join(outDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "es2022", module: "nodenext", moduleResolution: "nodenext", experimentalDecorators: true, emitDecoratorMetadata: true , types:["node"]} }));
 
   let dependenciesResolved = false;
   try {
-    execSync("npm install @nestjs/common @nestjs/core reflect-metadata rxjs typescript --no-save --silent", { cwd: outDir, stdio: "ignore" });
+    execSync("npm install @nestjs/common @nestjs/core reflect-metadata rxjs typescript @types/node --no-save --silent", { cwd: outDir, stdio: "ignore" });
     dependenciesResolved = true;
   } catch (err) {
     console.log("GENERATED PROJECT BUILD:\nBLOCKED");
@@ -144,7 +144,10 @@ function runVerification() {
 
   if (dependenciesResolved) {
     try {
-      execSync("npx tsc --noEmit", { cwd: outDir, stdio: "pipe" });
+      const tscBin = process.platform === "win32"
+        ? path.join(outDir, "node_modules", ".bin", "tsc.CMD")
+        : path.join(outDir, "node_modules", ".bin", "tsc");
+      execSync(`"${tscBin}" --noEmit`, { cwd: outDir, stdio: "pipe" });
       console.log("GENERATED PROJECT BUILD:\nSUCCESS");
     } catch (err: any) {
       console.log("GENERATED PROJECT BUILD:\nFAILED");
