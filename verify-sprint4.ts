@@ -103,10 +103,25 @@ function runVerification() {
     console.error("FAIL: Controller is missing expected @Post('users')");
     process.exit(1);
   }
-  if (!controllerCode.includes("get_user()") || !controllerCode.includes("post_user()")) {
+  
+  // 1. IR handlerId preservation check
+  if (!controllerCode.includes("get_user") || !controllerCode.includes("post_user")) {
     console.error("FAIL: Controller is missing expected IR handler IDs.");
     process.exit(1);
   }
+  
+  // 2. Sprint 5 POST body binding check
+  if (!controllerCode.includes("post_user(@Body()")) {
+    console.error("FAIL: POST handler is missing expected @Body() binding.");
+    process.exit(1);
+  }
+  
+  // 3. Parameterless GET check
+  if (!controllerCode.includes("get_user()")) {
+    console.error("FAIL: GET handler signature is incorrect.");
+    process.exit(1);
+  }
+
   console.log("PASS: GET /users, POST /users, and IR handler IDs correctly represented in controller.");
 
   const appModule = fileSystem1["src/app.module.ts"];
@@ -131,7 +146,7 @@ function runVerification() {
     fs.writeFileSync(fullPath, content);
   }
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({ name: "mvp", dependencies: {} }));
-  fs.writeFileSync(path.join(outDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "es2022", module: "nodenext", moduleResolution: "nodenext", experimentalDecorators: true, emitDecoratorMetadata: true , types:["node"]} }));
+  fs.writeFileSync(path.join(outDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "es2022", module: "nodenext", moduleResolution: "nodenext", experimentalDecorators: true, emitDecoratorMetadata: true, types: ["node"] } }));
 
   let dependenciesResolved = false;
   try {
