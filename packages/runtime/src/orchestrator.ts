@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import * as os from "os";
+import * as path from "path";
 
 class BoundedLog {
   private lines: string[] = [];
@@ -53,11 +54,14 @@ export class RuntimeOrchestrator {
   private npmCmd = os.platform() === "win32" ? "npm.cmd" : "npm";
 
   public async install(dir: string): Promise<void> {
-    await this.execPromise(this.npmCmd, ["install"], dir, 30000, "Install");
+    await this.execPromise(this.npmCmd, ["install", "--no-audit", "--no-fund", "--prefer-offline"], dir, 90000, "Install");
   }
 
   public async build(dir: string): Promise<void> {
-    await this.execPromise(this.npmCmd, ["run", "build"], dir, 15000, "Build");
+    const tscBin = os.platform() === "win32"
+      ? path.join(dir, "node_modules", ".bin", "tsc.CMD")
+      : path.join(dir, "node_modules", ".bin", "tsc");
+    await this.execPromise(tscBin, [], dir, 90000, "Build");
   }
 
   public async start(dir: string): Promise<RuntimeInstance> {
@@ -113,17 +117,17 @@ export class RuntimeOrchestrator {
     return new Promise((resolve, reject) => {
       const stdoutLog = new BoundedLog();
       const stderrLog = new BoundedLog();
-      
-      const child = spawn(cmd, args, { cwd });
-      
+
+      const child = spawn(cmd, args, { cwd, shell: os.platform() === "win32" });
+
       const timeout = setTimeout(() => {
         this.killProcess(child);
-        reject(new Error(`${label} Timeout (${timeoutMs}ms).\nSTDERR:\n${stderrLog.get()}`));
+        reject(new Error(`${label} Timeout (${timeoutMs}ms).\nSTDOUT:\n${stdoutLog.get()}\nSTDERR:\n${stderrLog.get()}`));
       }, timeoutMs);
 
       child.on("error", (err) => {
         clearTimeout(timeout);
-        reject(new Error(`Failed to spawn ${label} process: ${err.message}\nSTDERR:\n${stderrLog.get()}`));
+        reject(new Error(`Failed to spawn ${label} process: ${err.message}\nSTDOUT:\n${stdoutLog.get()}\nSTDERR:\n${stderrLog.get()}`));
       });
 
       child.stdout.on("data", (chunk) => stdoutLog.append(chunk));
@@ -132,7 +136,7 @@ export class RuntimeOrchestrator {
       child.once("exit", (code) => {
         clearTimeout(timeout);
         if (code !== 0) {
-          reject(new Error(`${label} Failed with code ${code}.\nSTDERR:\n${stderrLog.get()}`));
+          reject(new Error(`${label} Failed with code ${code}.\nSTDOUT:\n${stdoutLog.get()}\nSTDERR:\n${stderrLog.get()}`));
         } else {
           resolve();
         }

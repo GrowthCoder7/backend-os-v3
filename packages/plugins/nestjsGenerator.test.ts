@@ -61,7 +61,7 @@ describe("NestJS Generator MVP", () => {
     expect(tsconfig.compilerOptions.rootDir).toBe("./src");
     expect(tsconfig.compilerOptions.experimentalDecorators).toBe(true);
     expect(tsconfig.compilerOptions.emitDecoratorMetadata).toBe(true);
-    expect(tsconfig.compilerOptions.module).toBe("commonjs");
+    expect(tsconfig.compilerOptions.module).toBe("nodenext");
   });
 
   it("main.ts establishes the readiness protocol extracting the actual bound port", () => {

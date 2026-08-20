@@ -36,7 +36,7 @@ export const generateNestJSApp = (ir: BackendIR): Record<string, string> => {
       "@nestjs/core": "^10.0.0",
       "@nestjs/platform-express": "^10.0.0",
       "reflect-metadata": "^0.2.0",
-      "rxjs": "^7.8.1"
+      "rxjs": "^7.8.1",
     },
     devDependencies: {
       "@types/node": "^20.0.0",
@@ -46,19 +46,20 @@ export const generateNestJSApp = (ir: BackendIR): Record<string, string> => {
 
   // 2. Generate tsconfig.json (Source-to-dist boundary)
   fs["tsconfig.json"] = JSON.stringify({
-    compilerOptions: {
-      module: "commonjs",
-      target: "es2022",
-      outDir: "./dist",
-      rootDir: "./src",
-      experimentalDecorators: true,
-      emitDecoratorMetadata: true,
-      moduleResolution: "node",
-      strict: true,
-      skipLibCheck: true
-    },
-    include: ["src/**/*"]
-  }, null, 2);
+  compilerOptions: {
+    module: "nodenext",
+    target: "es2022",
+    outDir: "./dist",
+    rootDir: "./src",
+    experimentalDecorators: true,
+    emitDecoratorMetadata: true,
+    moduleResolution: "nodenext",
+    strict: true,
+    skipLibCheck: true,
+    types: ["node"]
+  },
+  include: ["src/**/*"]
+}, null, 2);
 
   // 3. Generate main.ts (Dynamic port binding & Actual Port Readiness Protocol)
   fs["src/main.ts"] = `import { NestFactory } from '@nestjs/core';

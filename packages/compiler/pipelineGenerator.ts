@@ -32,13 +32,17 @@ export const compileGraph = (graph: ArchitectureGraph): CompilationResult => {
       })),
     },
     apis: {
-      routes: Array.from(semanticContext.endpointsByEntity.values()).flat().map((ep) => ({
-        method: ep.method.toUpperCase(),
-        path: ep.path,
-        handlerId: `${ep.method.toLowerCase()}_${ep.entity.toLowerCase()}`,
-        entity: ep.entity,
-        action: ep.action,
-      })),
+      routes: Array.from(semanticContext.endpointsByEntity.values()).flat().map((ep) => {
+        const hasParams = ep.path.includes(":");
+        const suffix = hasParams ? "_by_id" : "";
+        return {
+          method: ep.method.toUpperCase(),
+          path: ep.path,
+          handlerId: `${ep.method.toLowerCase()}_${ep.entity.toLowerCase()}${suffix}`,
+          entity: ep.entity,
+          action: ep.action,
+        };
+      }),
     },
     workflows: {
       workflows: semanticContext.graph.workflows.map((wf) => ({
