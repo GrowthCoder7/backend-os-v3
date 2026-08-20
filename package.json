@@ -11,7 +11,9 @@
     "verify:sprint3": "tsx verify-sprint3.ts",
     "verify:sprint4":"tsx verify-sprint4.ts",
     "verify:sprint5":"tsx verify-sprint5.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:sprint6": "node --import tsx verify-sprint6.ts",
+    "verify:sprint6:gemini": "node --import tsx verify-sprint6-gemini.ts"
   },
   "devDependencies": {
     "prettier": "^3.7.4",

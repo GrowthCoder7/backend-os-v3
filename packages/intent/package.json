@@ -1,0 +1,12 @@
+{
+  "name": "@repo/intent",
+  "version": "1.0.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@repo/ai": "workspace:*",
+    "@repo/operations": "workspace:*",
+    "@repo/executor": "workspace:*",
+    "@repo/types": "workspace:*"
+  }
+}

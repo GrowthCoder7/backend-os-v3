@@ -1,6 +1,8 @@
 // /packages/store/graphStore.ts
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { IntentAdapter } from "@repo/intent";
+import { IntentResponse } from "@repo/ai";
 import { 
   ArchitectureGraph, 
   Entity, 
@@ -10,18 +12,21 @@ import {
   Workflow 
 } from "@repo/types";
 
-import {current} from 'immer'
-import {validateGraph} from '@repo/validation'
+import { current } from 'immer'
+import { validateGraph } from '@repo/validation'
 
 // IMPORT DEV A'S CANONICAL FACTORY
-import { createEntityOperation,updateEntityOperation,deleteEntityOperation} from "@repo/operations";
-import { OperationExecutor, OperationRegistry, EntityCreateHandler, EntityUpdateHandler,EntityDeleteHandler } from "@repo/executor";
+import { createEntityOperation, updateEntityOperation, deleteEntityOperation } from "@repo/operations";
+import { OperationExecutor, OperationRegistry, EntityCreateHandler, EntityUpdateHandler, EntityDeleteHandler } from "@repo/executor";
 
 const registry = new OperationRegistry();
 registry.register("entity.create", new EntityCreateHandler());
 registry.register("entity.update", new EntityUpdateHandler());
 registry.register("entity.delete", new EntityDeleteHandler());
+// Note: Ensure relation and endpoint handlers from Sprint 3 are imported and registered here as well for full coverage.
+
 const executor = new OperationExecutor(registry);
+const intentAdapter = new IntentAdapter(executor);
 
 // The shape of our store encompasses the core graph and atomic mutators.
 interface GraphState {
@@ -31,6 +36,7 @@ interface GraphState {
   addEntity: (entity: Entity) => void;
   updateEntity: (name: string, partialEntity: Partial<Entity>) => void;
   removeEntity: (name: string) => void;
+  applyIntent: (intent: IntentResponse) => { success: boolean, message?: string };
   
   addRelation: (relation: Relation) => void;
   
@@ -126,6 +132,38 @@ export const useGraphStore = create<GraphState>()(
         }
         state.graph = result.graph;
       }),
+
+    // AI Intent Integration Boundary
+    applyIntent: (intent) => {
+      let resultPayload = { success: false, message: "" };
+
+      set((state) => {
+        // Handle Clarification and Error statuses without invoking the executor
+        if (intent.status === "needs_clarification" || intent.status === "error") {
+          resultPayload = { success: false, message: intent.message || intent.status };
+          return; // Do not mutate
+        }
+
+        const context = {
+          graph: current(state.graph),
+          services: {},
+          validation: { validate: validateGraph }
+        };
+
+        // Execute sequential atomic commit via IntentAdapter
+        const result = intentAdapter.applyIntent(intent, context);
+
+        if (result.success) {
+          state.graph = result.graph; // ONE atomic commit
+          resultPayload = { success: true, message: "Architecture successfully updated." };
+        } else {
+          const errors = result.diagnostics.map((d: any) => d.message).join(" | ");
+          resultPayload = { success: false, message: errors };
+        }
+      });
+
+      return resultPayload;
+    },
 
     addRelation: (relation) =>
       set((state) => {
