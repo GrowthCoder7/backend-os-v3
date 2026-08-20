@@ -9,13 +9,13 @@
 | Property | Value |
 |----------|-------|
 | Document | BACKEND_OS_MASTER_CONTEXT.md |
-| Version | 1.1.0 |
+| Version | 1.2.0 |
 | Status | Active |
 | Authority | Canonical Engineering Context |
 | Architecture Version | 1.0 (Frozen) |
 | Repository Phase | Phase 2 — Core Platform Development |
 | Project Type | Compiler Platform |
-| Last Updated | 12 August 2026 |
+| Last Updated | 20 August 2026 |
 
 ---
 
@@ -406,7 +406,14 @@ The project currently includes:
 - Shared type system and state management
 - Parallel subsystem development across multiple packages
 
-Implementation is now focused on expanding compiler capabilities, completing generation infrastructure, and incrementally delivering production-ready platform modules while preserving the approved architecture.
+Implementation has since progressed through Sprints 3–6 (see "Current Implementation Status" for the detailed, repo-verified progression):
+
+- Sprint 3 — Relation and Endpoint operation execution surface complete and verified.
+- Sprint 4 — Backend IR → NestJS generator framework complete and deterministic; generated project builds cleanly.
+- Sprint 5 — End-to-end materialize → install → build → start → live HTTP CRUD verification complete.
+- Sprint 6 — AI intent interpretation package (`@repo/ai`) introduced using Google Gemini to translate natural language into Architecture Operations; verification harness not yet authored.
+
+Implementation is now focused on completing AI integration verification, expanding the Editing Engine to remaining mutation domains, and incrementally delivering production-ready platform modules while preserving the approved architecture.
 
 ---
 
@@ -2625,6 +2632,196 @@ and its result is independently confirmed.
 
 ---
 
+## Editing Engine — Sprint 3
+
+### Scope
+
+Sprint 3 extends the Operation execution surface from the entity
+lifecycle to the remaining first-class architectural mutation domains:
+
+- Relation create / update / delete
+- Endpoint create / update / delete
+- Ambiguous-lookup rejection
+- Identity-changing updates
+- Compiler compatibility across the expanded operation set
+
+### Implementation Status
+
+Implemented:
+
+- `relation.create` / `relation.update` / `relation.delete` operations, payloads, factories, and handlers
+- `endpoint.create` / `endpoint.update` / `endpoint.delete` operations, payloads, factories, and handlers
+- Registry registration for all relation and endpoint handlers in `@repo/executor`
+- Ambiguous relation/endpoint lookup rejection (multiple matches resolve to `failure` with rollback)
+- Identity-changing updates (e.g., relation `sourceField` change, endpoint `path` change) supported through lookup + collision detection
+- Validation-gated commit / rollback preserved across the expanded surface
+
+### Verification Status
+
+Behavioral verification completed through the repository-resident
+`verify-sprint3.ts` integration harness, executed against the actual
+repository.
+
+Verified behaviors include:
+
+- Relation create, duplicate-create rejection, and rollback
+- Relation update (including identity-changing update) and rollback
+- Relation update collision rejection and rollback
+- Relation update validation failure and rollback
+- Relation delete and nonexistent-delete rollback
+- Endpoint create, duplicate-create rejection, and rollback
+- Endpoint update (including identity-changing update) and rollback
+- Endpoint update collision rejection and rollback
+- Endpoint update validation failure and rollback
+- Endpoint delete and nonexistent-delete rollback
+- Ambiguous relation lookup rejection and rollback
+- Ambiguous endpoint lookup rejection and rollback
+- Compiler compatibility with the resulting graph (`compileGraph`)
+
+Sprint 3 relation and endpoint operation execution is therefore
+considered complete.
+
+---
+
+## Generation Framework — Sprint 4
+
+### Scope
+
+Sprint 4 introduces the deterministic Code Generation Framework:
+
+- Backend IR → NestJS application generator
+- Virtual file system (`fileSystem`) artifact contract
+- Deterministic, framework-specific code generation
+- Generated project must build under `tsc`
+
+### Implementation Status
+
+Implemented:
+
+- `@repo/plugins` Plugin Registry entry point: `executeGenerators(ir)` producing `GeneratedArtifacts`
+- `generateNestJSApp` generator emitting a complete NestJS application as a virtual file system:
+  - `package.json`, `tsconfig.json`
+  - `src/main.ts` (dynamic port binding + `BACKEND_OS_READY:<port>` readiness protocol)
+  - `src/app.module.ts` wiring all active entity modules
+  - Per-entity `src/<entity>/<entity>.module.ts`, `…controller.ts`, `…service.ts`
+- `generatePrismaSchema` Prisma generator preserved under the Plugin Registry
+- POSIX-style relative path normalization for cross-platform determinism
+- IR `handlerId` preservation in generated controllers
+- In-memory `Map`-backed CRUD service with `crypto.randomUUID()` primary keys, `BadRequestException` field validation, `NotFoundException` lookup semantics, and primary-key immutability on update
+- `@Body()` binding only for POST/PUT; `@Param()` binding only for parameterized routes; DELETE never binds a body
+
+### Verification Status
+
+Behavioral verification completed through the repository-resident
+`verify-sprint4.ts` harness, executed against the actual repository.
+
+Verified behaviors include:
+
+- Compiler rejects invalid graphs and returns `ir: null`
+- Valid graph compiles to a non-null Backend IR
+- Repeated compilation is deterministic (byte-for-byte identical IR)
+- `executeGenerators` output is deterministic (byte-for-byte identical `fileSystem`)
+- All 5 canonical files exist: `src/main.ts`, `src/app.module.ts`, `src/user/user.module.ts`, `src/user/user.controller.ts`, `src/user/user.service.ts`
+- Controller contains `@Get('users')`, `@Post('users')`, and expected IR `handlerId`s
+- POST handler uses `@Body()`; GET handler is parameterless
+- `AppModule` wires `UserModule`; `UserModule` wires `UserController` and `UserService`
+- Generated project's `tsc --noEmit` build succeeds after `npm install` of NestJS tooling
+
+Sprint 4 generation framework is therefore considered complete.
+
+---
+
+## Runtime Orchestration & E2E — Sprint 5
+
+### Scope
+
+Sprint 5 closes the loop from architecture to a running backend:
+
+- Compile → generate → materialize → install → build → start → live HTTP assertions
+- Secure materialization of the virtual file system to disk
+- Process orchestration with a readiness protocol and bounded logs
+- End-to-end CRUD validation against the spawned generated backend
+
+### Implementation Status
+
+Implemented:
+
+- `@repo/runtime` package with:
+  - `ProjectMaterializer.materialize(virtualFs, targetDir)` — strictly rejects absolute paths, Windows drive paths, UNC paths, and `..` traversal; rejects any resolved path that escapes the target directory
+  - `ProjectMaterializer.cleanup(targetDir)` — safe recursive removal
+  - `RuntimeOrchestrator` — `install`, `build`, and `start` phases with timeouts, bounded stdout/stderr logs, and process-tree kill (`taskkill /T /F` on Windows, `SIGKILL` elsewhere)
+  - `RuntimeInstance` — exposes the dynamically bound port and bounded logs; the readiness protocol emits `BACKEND_OS_READY:<port>` once the HTTP server binds
+- Generated `main.ts` honors `PORT` (defaulting to `3000`, supporting `PORT=0` for OS-assigned ports) and prints `BACKEND_OS_READY:<actualPort>`
+
+Note: `@repo/runtime` exposes two parallel surfaces — `src/` exports `ProjectMaterializer` and `RuntimeOrchestrator` (the active, Sprint 5 path), while the legacy `ExecutionEngine.ts` (a skeleton manifest ingestor) remains present at the package root for historical reasons. The legacy `ExecutionEngine` is not consumed by the Sprint 5 E2E path.
+
+### Verification Status
+
+Behavioral verification completed through the repository-resident
+`verify-sprint5.ts` harness, executed against the actual repository.
+
+Verified behaviors include:
+
+- Materializer rejects absolute POSIX paths (security boundary)
+- `compileGraph` succeeds on the canonical graph; `executeGenerators` produces a NestJS `fileSystem`
+- `ProjectMaterializer.materialize` writes the project to `.tmp/e2e-test-project`
+- `RuntimeOrchestrator.install` → `build` → `start` completes within configured timeouts
+- Application binds a dynamic port and signals readiness via `BACKEND_OS_READY:<port>`
+- HTTP CRUD assertions pass against the live server:
+  - `POST /users` → 201, response includes a generated `id`
+  - `GET /users` → 200, returns a non-empty array
+  - `GET /users/:id` → 200, data matches the created record
+  - `PUT /users/:id` → 200, update is persisted
+  - `DELETE /users/:id` → 200/204
+  - `GET /users/:id` after delete → 404
+- Cleanup (stop instance + `ProjectMaterializer.cleanup`) completes on both success and failure paths
+
+Sprint 5 end-to-end runtime orchestration is therefore considered complete.
+
+---
+
+## AI Intent Interpretation — Sprint 6
+
+### Scope
+
+Sprint 6 introduces the AI subsystem that translates natural-language
+architecture requests into Architecture Operations — preserving the
+single editing pipeline by always emitting operations rather than
+mutating the graph directly:
+
+- Natural language → Architecture Operations
+- Structurally safe, Zod-validated AI output
+- Provider abstraction (`AIProvider`) with a Google Gemini implementation
+
+### Implementation Status
+
+Implemented (`@repo/ai`):
+
+- `AIProvider` interface and `IntentRequest` / `IntentResponse` / `IntentOperation` contracts
+- `GeminiProvider` using `gemini-1.5-flash` with a strict system instruction that:
+  - Forbids source/framework code generation
+  - Forbids explanation outside the JSON payload
+  - Requests `status` of `success`, `needs_clarification`, or `error`
+- `IntentResponseSchema` (Zod) validating structural safety before the result is trusted; invalid AI output degrades to an `error` `IntentResponse` rather than being executed
+- `SYSTEM_PROMPT` enumerates supported field types, HTTP methods, and actions, and instructs the model to return `needs_clarification` for framework-specific or ambiguous requests
+- The operation union covers `entity.*`, `endpoint.*`, and `relation.*` create/update/delete, aligning the AI surface with the Sprint 2–3 Editing Engine
+
+### Verification Status
+
+The `@repo/ai` package includes a Vitest harness
+(`src/__tests__/gemini.test.ts`), executable via the package-level
+`test` script.
+
+However, the repository-resident sprint verification harness
+`verify-sprint6-ai.ts` is currently empty, and the AI provider has not
+yet been wired into the web application or the larger E2E pipeline.
+
+Sprint 6 is therefore considered **partially implemented**: the
+provider and contract are in place, but behavioral verification and
+UI/runtime integration remain outstanding.
+
+---
+
 ## Visual Builder
 
 Implemented:
@@ -2635,13 +2832,16 @@ Implemented:
 - Builder interface
 - Property editing
 - Canvas integration
+- Compiler Preview with AST / Backend IR / Prisma tabs
+- Live diagnostic rendering from `compileGraph`
 
 Planned:
 
 - Endpoint Builder
 - Workflow Builder
 - Event Builder
-- Relationship improvements
+- Relationship Builder UI
+- AI intent input wired to `@repo/ai`
 
 ---
 
@@ -2724,18 +2924,19 @@ The repository currently contains implementation across the following major pack
 
 | Package | Status |
 |----------|--------|
-| compiler | Active Development |
-| graph | Active Development |
-| validation | Active Development |
-| operations | Sprint 2 Complete |
-| executor | Sprint 2 Complete |
-| semantic | Planned |
-| generators | Planned |
-| plugins | Planned |
 | types | Active Development |
-| store | Sprint 2 Integration Complete |
+| operations | Sprint 3 Complete (entity, relation, endpoint) |
+| executor | Sprint 3 Complete (entity, relation, endpoint) |
+| validation | Sprint 2 Integration Complete |
+| semantic | Implemented (deterministic indexing) |
+| compiler | Sprint 4 Complete (validation + semantic → Backend IR) |
+| plugins | Sprint 4 Complete (NestJS + Prisma generators) |
+| runtime | Sprint 5 Complete (materializer + orchestrator) |
+| ai | Sprint 6 Partial (provider implemented; verification pending) |
+| store | Sprint 2 Integration Complete (entity routes through executor) |
 | ui | Active Development |
-| utils | Active Development |
+| eslint-config | Tooling |
+| typescript-config | Tooling |
 
 Package status reflects implementation maturity rather than code volume.
 
@@ -2745,17 +2946,20 @@ Package status reflects implementation maturity rather than code volume.
 
 Near-term priorities include:
 
-1. Expand operation execution coverage to remaining architectural mutations.
-2. Establish the next compiler/semantic integration boundary.
-3. Expand semantic analysis.
-4. Mature Backend IR.
-5. Establish the generator framework.
-6. Introduce the Plugin Registry.
-7. Continue Editing Engine capabilities including history, undo/redo,
-   and additional mutation domains.
+1. Author the Sprint 6 behavioral verification harness (`verify-sprint6-ai.ts`) and run it against the actual repository.
+2. Wire the `@repo/ai` provider into the web application as an additional Architecture Operation producer.
+3. Eliminate direct graph mutation in `@repo/store` for relations, endpoints, events, and workflows — route all remaining domains through the Operation Executor to satisfy the single-editing-pipeline invariant.
+4. Remove the legacy `runtime/ExecutionEngine.ts` manifest ingestor (or formally retire it via an ADR) to consolidate the runtime surface on `ProjectMaterializer` + `RuntimeOrchestrator`.
+5. Expand the Editor surface in the Visual Builder (Endpoint Builder, Relation Builder, Workflow Builder, Event Builder).
+6. Mature the compiler pipeline with explicit normalization and optimization passes.
+7. Continue Editing Engine capabilities including history, undo/redo, and additional mutation domains.
 
 Sprint 1 established the initial Operation → Executor → Graph integration path.
 Sprint 2 completed the entity lifecycle execution slice.
+Sprint 3 completed the relation and endpoint lifecycle execution slice.
+Sprint 4 completed the deterministic NestJS generation framework.
+Sprint 5 completed end-to-end materialize-build-start-assert runtime orchestration.
+Sprint 6 introduced the AI intent interpretation package and remains pending verification.
 
 Future work should extend this foundation rather than introduce parallel
 mutation paths.
@@ -2768,11 +2972,15 @@ Known areas requiring future refinement include:
 
 - Placeholder implementations
 - Temporary abstractions
-- Incomplete compiler passes
+- Incomplete compiler passes (no explicit normalization or optimization passes yet)
 - Missing optimization stages
 - Builder consistency improvements
-- Operation coverage currently limited to the implemented entity lifecycle operations; relationships, endpoints, events, and workflows remain outside the completed operation execution surface
-- Sprint 2 behavioral verification is repository-backed through `verify-sprint2.ts`; future Editing Engine changes must preserve and extend this verification approach.
+- Operation execution is complete for entity, relation, and endpoint domains; **events and workflows still mutate the Architecture Graph directly inside `@repo/store` (`graphStore.ts` `addRelation`, `addEndpoint`, `addEvent`, `addWorkflow`)**, bypassing the Operation Executor. This is a known violation of the single-editing-pipeline invariant and is scheduled for remediation.
+- Sprint 6 (`@repo/ai`) provider and Zod schema are implemented, but `verify-sprint6-ai.ts` is empty and the provider is not yet wired into the web app or the E2E pipeline.
+- Legacy `runtime/ExecutionEngine.ts` (`CompilerManifest` ingestor) is superseded by the Sprint 5 `ProjectMaterializer` + `RuntimeOrchestrator` surface and remains in the package as abandoned scaffolding.
+- `compiler/index.ts` does not currently export `CompilerManifest` referenced by the legacy runtime `ExecutionEngine`; the legacy surface is therefore non-functional and should be removed.
+- No persistence layer exists — the Architecture Graph lives in memory via the Zustand store only.
+- Sprint behavioral verification is repository-backed through `verify-sprint2.ts` through `verify-sprint5.ts`; future sprints must preserve and extend this verification approach, and `verify-sprint6-ai.ts` must be authored to close the gap.
 - Monorepo typecheck orchestration remains dependent on workspace-level task configuration
 
 Technical debt should remain visible and intentionally managed.
@@ -2907,12 +3115,14 @@ Milestone 3 — Editing Engine
              ↓
          IN PROGRESS
              ↓
-     Sprint 1 — Create
-     Sprint 2 — Update/Delete
+     Sprint 1 — Entity Create
+     Sprint 2 — Entity Update/Delete
+     Sprint 3 — Relation + Endpoint Create/Update/Delete
              ↓
+     Future — Event Operations
+     Future — Workflow Operations
      Future — History
      Future — Undo/Redo
-     Future — Other mutations
 
 ### Completed Foundation
 
@@ -2928,7 +3138,11 @@ Graph Commit / Rollback
         ↓
 Store Integration
 
-The milestone remains in progress until the complete editing engine scope is implemented and verified.
+Sprint 3 extended the same execution path to relations and endpoints.
+
+The milestone remains in progress until event and workflow operations are
+implemented, store-direct mutation is eliminated for all domains, and
+history/undo-redo is delivered.
 
 ---
 
@@ -2950,7 +3164,15 @@ Build the complete compiler pipeline.
 
 - The compiler produces a complete and deterministic Backend IR from any valid Architecture Graph.
 
-**Status:** Planned
+**Status:** Partially Complete
+
+Sprint 4 delivered the operational compiler path:
+`validateGraph` → `analyzeGraph` → Backend IR. Compilation is deterministic
+and free of framework concepts, verified by `verify-sprint4.ts` and the
+`@repo/compiler` Vitest suite.
+
+Explicit normalization and optimization compiler passes remain outstanding
+(see Active Technical Debt).
 
 ---
 
@@ -2973,7 +3195,39 @@ Transform Backend IR into production-ready backend applications.
 
 - A complete backend application can be generated from Backend IR without manual intervention.
 
-**Status:** Planned
+**Status:** Partially Complete
+
+Sprint 4 delivered the Plugin Registry (`executeGenerators`) with a
+deterministic NestJS generator (`generateNestJSApp`) and a Prisma schema
+generator (`generatePrismaSchema`). Sprint 5 proved the generator output
+is end-to-end runnable. Additional generators (documentation, deployment,
+configuration) remain planned.
+
+---
+
+# Milestone 5b — Generation Runtime
+
+## Objective
+
+Materialize generated backends and run them for verification.
+
+### Scope
+
+- Secure virtual-FS → disk materialization
+- Process orchestration (install / build / start)
+- Dynamic-port readiness protocol
+- Bounded log capture
+- End-to-end CRUD verification against the running backend
+
+### Success Criteria
+
+- A generated backend can be materialized, built, started, and exercised over HTTP without manual intervention.
+
+**Status:** Completed
+
+Sprint 5 delivered `ProjectMaterializer` and `RuntimeOrchestrator` in
+`@repo/runtime` and proved the full E2E path against a generated NestJS
+application via `verify-sprint5.ts`.
 
 ---
 
@@ -2991,12 +3245,19 @@ Improve the developer experience around the compiler.
 - Plugin Registry
 - Enhanced Compiler Preview
 - Graph visualization
+- AI intent interpretation
 
 ### Success Criteria
 
-- Developers can inspect, debug, and understand every stage of compilation.
+- Developers can inspect, debug, understand, and converse with every stage of compilation.
 
-**Status:** Planned
+**Status:** In Progress
+
+Sprint 4 delivered the Plugin Registry (`executeGenerators`) and the
+Compiler Preview renders live diagnostics from `compileGraph`. Sprint 6
+introduced the `@repo/ai` intent provider (`GeminiProvider`) and
+Zod-validated `IntentResponse`. AI integration into the web app and the
+Sprint 6 verification harness remain outstanding.
 
 ---
 
@@ -3119,6 +3380,12 @@ This document maintains an index of those records.
 | ADR-008 | Package-Oriented Repository | Accepted |
 | ADR-009 | Public Contracts Before Implementation | Accepted |
 | ADR-010 | Deterministic Compilation | Accepted |
+| D-007 | Complete Entity Lifecycle (Sprint 2) | Accepted |
+| (Sprint 3) | Relation & Endpoint Lifecycle via Operation Executor | Accepted |
+| (Sprint 4) | Virtual File System as Framework-Independent Generator Contract | Accepted |
+| (Sprint 4) | IR `handlerId` Preservation in Generated Controllers | Accepted |
+| (Sprint 5) | Secure Materialization + Readiness Protocol for Generation Runtime | Accepted |
+| (Sprint 6) | AI Intent → Architecture Operations (Zod-Validated) | Partial / Pending Verification |
 
 Future architectural changes should introduce new ADRs rather than modifying historical records.
 
@@ -3145,6 +3412,10 @@ Lessons should be concise, actionable, and based on real engineering experience.
 - Parallel contributors must consume one canonical public contract; duplicate package contracts create integration drift.
 - Execution should validate candidate state before committing architectural mutation.
 - Integration verification must include the actual monorepo build/typecheck path rather than relying only on package-local compilation claims.
+- A generator's `fileSystem` artifact must use POSIX-style relative paths for cross-platform determinism; Windows backslashes break byte-for-byte equality.
+- The materializer security boundary must reject absolute, UNC, drive-letter, and `..` traversal paths *and* re-validate the path-relative-to-target result, not just the input string.
+- A runtime readiness protocol (`BACKEND_OS_READY:<port>`) decouples dynamic-port binding from client timing and is required for reliable E2E against spawned backends.
+- AI providers must return a Zod-validated `IntentResponse`; never trust raw LLM JSON, and degrade to an explicit `error` status on structural failure rather than executing the payload.
 
 ---
 
