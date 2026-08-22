@@ -13,14 +13,21 @@
     "verify:sprint5":"tsx verify-sprint5.ts",
     "test": "vitest run",
     "verify:sprint6": "node --import tsx verify-sprint6.ts",
-    "verify:sprint6:gemini": "node --import tsx verify-sprint6-gemini.ts"
+    "verify:sprint6:gemini": "node --env-file=.env --import tsx verify-sprint6-gemini.ts",
+    "verify:sprint6:integration": "node --env-file=.env --import tsx verify-sprint6-integration.ts"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
     "turbo": "^2.10.10",
     "typescript": "5.9.2",
     "tsx": "^4.23.12",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    
+    "@repo/ai": "workspace:*",
+    "@repo/compiler": "workspace:*",
+    "@repo/executor": "workspace:*",
+    "@repo/intent": "workspace:*",
+    "@repo/validation": "workspace:*"
   },
   "dependencies": {
     "zustand": "^5.0.12"

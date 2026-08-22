@@ -1,7 +1,13 @@
 import {
-  CreateEntityPayload, UpdateEntityPayload, DeleteEntityPayload,
-  CreateEndpointPayload, UpdateEndpointPayload, DeleteEndpointPayload,
-  CreateRelationPayload, UpdateRelationPayload, DeleteRelationPayload
+  CreateEntityPayload,
+  UpdateEntityPayload,
+  DeleteEntityPayload,
+  CreateEndpointPayload,
+  UpdateEndpointPayload,
+  DeleteEndpointPayload,
+  CreateRelationPayload,
+  UpdateRelationPayload,
+  DeleteRelationPayload,
 } from "@repo/operations";
 
 export interface IntentRequest {
