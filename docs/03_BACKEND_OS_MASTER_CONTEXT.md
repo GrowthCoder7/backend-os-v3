@@ -9,13 +9,13 @@
 | Property | Value |
 |----------|-------|
 | Document | BACKEND_OS_MASTER_CONTEXT.md |
-| Version | 1.2.0 |
+| Version | 1.3.0 |
 | Status | Active |
 | Authority | Canonical Engineering Context |
 | Architecture Version | 1.0 (Frozen) |
 | Repository Phase | Phase 2 — Core Platform Development |
 | Project Type | Compiler Platform |
-| Last Updated | 20 August 2026 |
+| Last Updated | 22 August 2026 |
 
 ---
 
@@ -146,6 +146,10 @@ The following have been finalized:
 - Package boundaries
 - Domain model
 - Engineering methodology
+- Relation and Endpoint operation execution
+- Backend IR to NestJS code generation
+- End-to-end materialize → install → build → start → HTTP CRUD pipeline
+- AI intent interpretation using Gemini
 
 ---
 
@@ -165,6 +169,10 @@ Current progress includes, but is not limited to:
 - Validation pipeline integrated
 - Backend IR preview established
 - Parallel package development underway
+- Sprint 3: Relation and Endpoint operation execution surface complete and verified
+- Sprint 4: Backend IR → NestJS generator framework complete and deterministic; generated project builds cleanly
+- Sprint 5: End-to-end materialize → install → build → start → live HTTP CRUD verification complete
+- Sprint 6: AI intent interpretation package (`@repo/ai`) introduced using Google Gemini to translate natural language into Architecture Operations
 
 Implementation status is expected to evolve continuously while the architecture remains stable.
 
@@ -411,9 +419,13 @@ Implementation has since progressed through Sprints 3–6 (see "Current Implemen
 - Sprint 3 — Relation and Endpoint operation execution surface complete and verified.
 - Sprint 4 — Backend IR → NestJS generator framework complete and deterministic; generated project builds cleanly.
 - Sprint 5 — End-to-end materialize → install → build → start → live HTTP CRUD verification complete.
-- Sprint 6 — AI intent interpretation package (`@repo/ai`) introduced using Google Gemini to translate natural language into Architecture Operations; verification harness not yet authored.
+- Sprint 6: AI intent interpretation and A+B integration complete and verified.
+  Natural-language architecture requests are translated by `GeminiProvider`
+  into Zod-validated `IntentResponse` objects, converted by `@repo/intent`
+  into canonical Architecture Operations, executed atomically through the
+  existing `@repo/executor`, and successfully compiled into Backend IR.
 
-Implementation is now focused on completing AI integration verification, expanding the Editing Engine to remaining mutation domains, and incrementally delivering production-ready platform modules while preserving the approved architecture.
+Implementation is now focused on expanding the Editing Engine to remaining mutation domains, completing platform/UI integration surfaces, and incrementally delivering production-ready platform modules while preserving the approved architecture.
 
 ---
 
@@ -1074,6 +1086,10 @@ Current repository progress includes:
 - Initial compiler pipeline
 - Backend IR visualization
 - Package-level separation
+- Sprint 3: Relation and Endpoint operation execution surface complete and verified
+- Sprint 4: Backend IR → NestJS generator framework complete and deterministic; generated project builds cleanly
+- Sprint 5: End-to-end materialize → install → build → start → live HTTP CRUD verification complete
+- Sprint 6: AI intent interpretation package (`@repo/ai`) introduced using Google Gemini to translate natural language into Architecture Operations
 
 ### In Progress
 
@@ -1093,9 +1109,6 @@ Current repository progress includes:
 - Multi-framework generators
 - Incremental compilation
 - Collaboration services
-- AI-assisted architecture editing
-
-The implementation roadmap extends this architecture but does not alter it.
 
 ---
 
@@ -1754,17 +1767,18 @@ Intent may originate from:
 
 These interfaces never modify the Architecture Graph directly.
 
-Instead, they construct Architecture Operations that describe the requested change.
+Instead, they produce intent representations that flow through the canonical pipeline:
 
-Examples include:
-
-- Create Entity
-- Delete Endpoint
-- Rename Field
-- Add Relationship
-- Create Workflow
+- **Visual Builder** → Architecture Operations
+- **AI Assistant** → IntentResponse → IntentAdapter → Architecture Operations
+- **CLI** → Architecture Operations
+- **Importers** → Architecture Operations
+- **Future APIs** → Architecture Operations
+- **External Plugins** → Architecture Operations
 
 User interfaces are therefore producers of intent rather than owners of state.
+
+The `IntentAdapter` translates AI-provided `IntentResponse` objects into canonical Architecture Operations using factories from `@repo/operations`.
 
 ---
 
@@ -2798,7 +2812,12 @@ mutating the graph directly:
 Implemented (`@repo/ai`):
 
 - `AIProvider` interface and `IntentRequest` / `IntentResponse` / `IntentOperation` contracts
-- `GeminiProvider` using `gemini-1.5-flash` with a strict system instruction that:
+- `GeminiProvider` using the Google Gemini SDK with the currently configured
+  Gemini Flash model (`gemini-3.6-flash` at the time of Sprint 6 completion).
+  The model configuration is an implementation detail; the `AIProvider`
+  abstraction remains provider-independent.
+
+  A strict system instruction enforces:
   - Forbids source/framework code generation
   - Forbids explanation outside the JSON payload
   - Requests `status` of `success`, `needs_clarification`, or `error`
@@ -2806,19 +2825,95 @@ Implemented (`@repo/ai`):
 - `SYSTEM_PROMPT` enumerates supported field types, HTTP methods, and actions, and instructs the model to return `needs_clarification` for framework-specific or ambiguous requests
 - The operation union covers `entity.*`, `endpoint.*`, and `relation.*` create/update/delete, aligning the AI surface with the Sprint 2–3 Editing Engine
 
+### @repo/intent
+
+**Purpose**
+
+Provides the deterministic boundary between AI-generated intent and the
+canonical Architecture Operation execution system.
+
+**Responsibilities**
+
+- Consume validated `IntentResponse` objects from `@repo/ai`
+- Translate `IntentOperation` values into canonical Architecture Operations
+- Use canonical factories from `@repo/operations`
+- Assign `source: "ai"` metadata
+- Preserve AI-provided operation ordering
+- Execute operations sequentially through `@repo/executor`
+- Provide atomic rollback semantics for multi-operation intents
+
+**Non-responsibilities**
+
+- Calling Gemini
+- Generating AI output
+- Schema validation
+- Direct graph mutation
+- Store mutation
+- Operation reordering
+
+### Atomic Multi-Operation Intent Execution
+
+A single AI intent may contain multiple Architecture Operations.
+
+`@repo/intent` executes these operations sequentially using local graph
+references. Intermediate graph states are never committed to the Store.
+
+If every operation succeeds, the final graph is committed once.
+
+If any operation fails, the adapter discards all intermediate graph states and
+returns the original graph together with the executor diagnostics, producing
+atomic intent-level rollback.
+
+Therefore:
+
+    AI Intent
+        ↓
+    Operation 1
+        ↓
+    Operation 2
+        ↓
+    Operation N
+        ↓
+    All succeed → single graph commit
+
+    Any failure → rollback to original graph
+
+### AI Does Not Mutate the Graph
+
+AI-generated intent is never considered an authoritative architectural state.
+It is an input to the Architecture Operation pipeline and must pass through
+canonical factories, execution, and validation before affecting the graph.
+
+The `IntentAdapter` and `GeminiProducer` never mutate the Architecture Graph
+directly. Only the `OperationExecutor` may mutate architectural state.
+
+---
+
 ### Verification Status
 
 The `@repo/ai` package includes a Vitest harness
 (`src/__tests__/gemini.test.ts`), executable via the package-level
 `test` script.
 
-However, the repository-resident sprint verification harness
-`verify-sprint6-ai.ts` is currently empty, and the AI provider has not
-yet been wired into the web application or the larger E2E pipeline.
+The repository-resident sprint verification harness
+`verify-sprint6.ts`, `verify-sprint6-gemini.ts`, and
+`verify-sprint6-integration.ts` all pass successfully, confirming the
+complete physical pipeline:
 
-Sprint 6 is therefore considered **partially implemented**: the
-provider and contract are in place, but behavioral verification and
-UI/runtime integration remain outstanding.
+Natural Language
+→ GeminiProvider
+→ IntentResponse
+→ IntentAdapter
+→ Canonical Operations
+→ OperationExecutor
+→ ArchitectureGraph
+→ compileGraph()
+→ BackendIR
+
+Sprint 6 is therefore considered **complete and verified**: the provider
+and contracts are in place, behavioral verification is complete via the
+integration harness, and the AI → Intent → Operations → Executor → Graph
+pipeline functions end-to-end.
 
 ---
 
@@ -2932,7 +3027,8 @@ The repository currently contains implementation across the following major pack
 | compiler | Sprint 4 Complete (validation + semantic → Backend IR) |
 | plugins | Sprint 4 Complete (NestJS + Prisma generators) |
 | runtime | Sprint 5 Complete (materializer + orchestrator) |
-| ai | Sprint 6 Partial (provider implemented; verification pending) |
+|ai | Sprint 6 Complete (Gemini provider + verification)
+intent | Sprint 6 Complete (AI → Operations adapter)
 | store | Sprint 2 Integration Complete (entity routes through executor) |
 | ui | Active Development |
 | eslint-config | Tooling |
@@ -2961,6 +3057,10 @@ Sprint 4 completed the deterministic NestJS generation framework.
 Sprint 5 completed end-to-end materialize-build-start-assert runtime orchestration.
 Sprint 6 introduced the AI intent interpretation package and remains pending verification.
 
+(Sprint 6 = AI subsystem + end-to-end backend integration complete
+
+Sprint 7 = Platform/UI integration of the AI capability)
+
 Future work should extend this foundation rather than introduce parallel
 mutation paths.
 
@@ -2976,11 +3076,10 @@ Known areas requiring future refinement include:
 - Missing optimization stages
 - Builder consistency improvements
 - Operation execution is complete for entity, relation, and endpoint domains; **events and workflows still mutate the Architecture Graph directly inside `@repo/store` (`graphStore.ts` `addRelation`, `addEndpoint`, `addEvent`, `addWorkflow`)**, bypassing the Operation Executor. This is a known violation of the single-editing-pipeline invariant and is scheduled for remediation.
-- Sprint 6 (`@repo/ai`) provider and Zod schema are implemented, but `verify-sprint6-ai.ts` is empty and the provider is not yet wired into the web app or the E2E pipeline.
 - Legacy `runtime/ExecutionEngine.ts` (`CompilerManifest` ingestor) is superseded by the Sprint 5 `ProjectMaterializer` + `RuntimeOrchestrator` surface and remains in the package as abandoned scaffolding.
 - `compiler/index.ts` does not currently export `CompilerManifest` referenced by the legacy runtime `ExecutionEngine`; the legacy surface is therefore non-functional and should be removed.
 - No persistence layer exists — the Architecture Graph lives in memory via the Zustand store only.
-- Sprint behavioral verification is repository-backed through `verify-sprint2.ts` through `verify-sprint5.ts`; future sprints must preserve and extend this verification approach, and `verify-sprint6-ai.ts` must be authored to close the gap.
+- Sprint behavioral verification is repository-backed through `verify-sprint2.ts` through `verify-sprint6.ts`; future sprints must preserve and extend this verification approach.
 - Monorepo typecheck orchestration remains dependent on workspace-level task configuration
 
 Technical debt should remain visible and intentionally managed.
@@ -3385,7 +3484,7 @@ This document maintains an index of those records.
 | (Sprint 4) | Virtual File System as Framework-Independent Generator Contract | Accepted |
 | (Sprint 4) | IR `handlerId` Preservation in Generated Controllers | Accepted |
 | (Sprint 5) | Secure Materialization + Readiness Protocol for Generation Runtime | Accepted |
-| (Sprint 6) | AI Intent → Architecture Operations (Zod-Validated) | Partial / Pending Verification |
+| (Sprint 6) | AI Intent → Architecture Operations (Zod-Validated) | Accepted / Verified |
 
 Future architectural changes should introduce new ADRs rather than modifying historical records.
 
