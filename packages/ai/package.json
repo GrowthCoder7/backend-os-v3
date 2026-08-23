@@ -8,8 +8,9 @@
   },
   "dependencies": {
     "@repo/types": "workspace:*",
-    "@google/generative-ai": "^0.21.0",
-    "zod": "^3.23.8"
+    "@repo/operations": "workspace:*",
+    "@google/genai": "2.18.0",
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
