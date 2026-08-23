@@ -57,6 +57,9 @@ importers:
       '@repo/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
+      '@repo/plugins':
+        specifier: workspace:*
+        version: link:../../packages/plugins
       '@repo/store':
         specifier: workspace:*
         version: link:../../packages/store
