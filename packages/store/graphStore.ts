@@ -176,7 +176,7 @@ export const useGraphStore = create<GraphState>()(
           state.graph = result.graph; 
           resultPayload = { success: true, message: "Architecture successfully updated." };
         } else {
-          const errors = result.diagnostics?.map((d: any) => d.message).join(" | ") || result.message || "Intent rejected.";
+          const errors = result.diagnostics?.map((d: any) => d.message).join(" | ")  || "Intent rejected.";
           resultPayload = { success: false, message: errors };
         }
       });
