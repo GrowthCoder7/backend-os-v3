@@ -1,4 +1,3 @@
-// /packages/store/graphStore.ts
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { IntentAdapter } from "@repo/intent";
@@ -12,39 +11,69 @@ import {
   Workflow 
 } from "@repo/types";
 
-import { current } from 'immer'
-import { validateGraph } from '@repo/validation'
+import { current } from 'immer';
+import { validateGraph } from '@repo/validation';
 
-// IMPORT DEV A'S CANONICAL FACTORY
-import { createEntityOperation, updateEntityOperation, deleteEntityOperation } from "@repo/operations";
-import { OperationExecutor, OperationRegistry, EntityCreateHandler, EntityUpdateHandler, EntityDeleteHandler } from "@repo/executor";
+import { 
+  createEntityOperation, updateEntityOperation, deleteEntityOperation,
+  createEndpointOperation, updateEndpointOperation, deleteEndpointOperation,
+  createRelationOperation, updateRelationOperation, deleteRelationOperation
+} from "@repo/operations";
+
+import { 
+  OperationExecutor, OperationRegistry, 
+  EntityCreateHandler, EntityUpdateHandler, EntityDeleteHandler,
+  EndpointCreateHandler, EndpointUpdateHandler, EndpointDeleteHandler,
+  RelationCreateHandler, RelationUpdateHandler, RelationDeleteHandler
+} from "@repo/executor";
 
 const registry = new OperationRegistry();
+
+// Entity Handlers
 registry.register("entity.create", new EntityCreateHandler());
 registry.register("entity.update", new EntityUpdateHandler());
 registry.register("entity.delete", new EntityDeleteHandler());
-// Note: Ensure relation and endpoint handlers from Sprint 3 are imported and registered here as well for full coverage.
+
+// Endpoint Handlers
+registry.register("endpoint.create", new EndpointCreateHandler());
+registry.register("endpoint.update", new EndpointUpdateHandler());
+registry.register("endpoint.delete", new EndpointDeleteHandler());
+
+// Relation Handlers
+registry.register("relation.create", new RelationCreateHandler());
+registry.register("relation.update", new RelationUpdateHandler());
+registry.register("relation.delete", new RelationDeleteHandler());
 
 const executor = new OperationExecutor(registry);
 const intentAdapter = new IntentAdapter(executor);
 
-// The shape of our store encompasses the core graph and atomic mutators.
 interface GraphState {
   graph: ArchitectureGraph;
   
-  // Atomic Mutators
+  // Entity Mutators
   addEntity: (entity: Entity) => void;
   updateEntity: (name: string, partialEntity: Partial<Entity>) => void;
   removeEntity: (name: string) => void;
-  applyIntent: (intent: IntentResponse) => { success: boolean, message?: string };
   
+  // Relation Mutators
   addRelation: (relation: Relation) => void;
+  updateRelation: (lookup: { source: string; sourceField: string; target: string; targetField: string }, partialRelation: Partial<Relation>) => void;
+  removeRelation: (lookup: { source: string; sourceField: string; target: string; targetField: string }) => void;
   
+  // Endpoint Mutators
   addEndpoint: (endpoint: Endpoint) => void;
+  updateEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }, partialEndpoint: Partial<Endpoint>) => void;
+  removeEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }) => void;
+  
+  // Legacy UI Compatibility
   updateEndpointPath: (method: string, oldPath: string, newPath: string) => void;
   
+  // Event & Workflow
   addEvent: (event: Event) => void;
   addWorkflow: (workflow: Workflow) => void;
+
+  // AI Intent Boundary
+  applyIntent: (intent: IntentResponse) => { success: boolean, message?: string };
 }
 
 const initialGraph: ArchitectureGraph = {
@@ -63,134 +92,96 @@ const initialGraph: ArchitectureGraph = {
   workflows: [],
 };
 
+const executeOperation = (operation: any, graph: ArchitectureGraph) => {
+  const context = {
+    graph,
+    services: {},
+    validation: { validate: validateGraph }
+  };
+  const result = executor.execute(operation, context);
+  if (!result.success) {
+    const errors = result.diagnostics
+      ?.filter((d: any) => d.severity === "error")
+      .map((d: any) => d.message).join(" | ");
+    throw new Error(errors || "Operation failed validation.");
+  }
+  return result.graph;
+};
+
 export const useGraphStore = create<GraphState>()(
   immer((set) => ({
     graph: initialGraph,
 
-    // O(1) Normalization allows direct assignment
-    addEntity: (entity) =>
-      set((state) => {
-        // 1. DELEGATE TO DEV A'S FACTORY (Handles ID, Type, Metadata, Payload)
-        const operation = createEntityOperation({ entity });
+    // --- ENTITIES ---
+    addEntity: (entity) => set((state) => {
+      state.graph = executeOperation(createEntityOperation({ entity }), current(state.graph));
+    }),
+    updateEntity: (name, partialEntity) => set((state) => {
+      state.graph = executeOperation(updateEntityOperation({ name, partialEntity }), current(state.graph));
+    }),
+    removeEntity: (name) => set((state) => {
+      state.graph = executeOperation(deleteEntityOperation({ name }), current(state.graph));
+    }),
 
-        // 2. CONSTRUCT CONTEXT
-        const context = {
-          graph: current(state.graph),
-          services: {},
-          validation: { validate: validateGraph }
-        };
+    // --- RELATIONS ---
+    addRelation: (relation) => set((state) => {
+      state.graph = executeOperation(createRelationOperation({ relation }), current(state.graph));
+    }),
+    updateRelation: (lookup, partialRelation) => set((state) => {
+      state.graph = executeOperation(updateRelationOperation({ lookup, partialRelation }), current(state.graph));
+    }),
+    removeRelation: (lookup) => set((state) => {
+      state.graph = executeOperation(deleteRelationOperation({ lookup }), current(state.graph));
+    }),
 
-        // 3. EXECUTE
-        const result = executor.execute(operation, context);
+    // --- ENDPOINTS ---
+    addEndpoint: (endpoint) => set((state) => {
+      state.graph = executeOperation(createEndpointOperation({ endpoint }), current(state.graph));
+    }),
+    updateEndpoint: (lookup, partialEndpoint) => set((state) => {
+      state.graph = executeOperation(updateEndpointOperation({ lookup, partialEndpoint }), current(state.graph));
+    }),
+    removeEndpoint: (lookup) => set((state) => {
+      state.graph = executeOperation(deleteEndpointOperation({ lookup }), current(state.graph));
+    }),
 
-        // 4. ROLLBACK / ERROR BUBBLING
-        if (!result.success) {
-          const errors = result.diagnostics
-            .filter(d => d.severity === "error")
-            .map(d => d.message).join(" | ");
-          throw new Error(errors);
-        }
+    // --- LEGACY UI COMPATIBILITY ---
+    updateEndpointPath: (method, oldPath, newPath) => set((state) => {
+      const operation = updateEndpointOperation({
+        lookup: { method: method as any, path: oldPath },
+        partialEndpoint: { path: newPath }
+      });
+      state.graph = executeOperation(operation, current(state.graph));
+    }),
 
-        // 5. COMMIT IMMUTABLE AST
-        state.graph = result.graph;
-      }),
+    // --- EVENTS & WORKFLOWS ---
+    addEvent: (event) => set((state) => { state.graph.events[event.name] = event; }),
+    addWorkflow: (workflow) => set((state) => { state.graph.workflows.push(workflow); }),
 
-    updateEntity: (name, partialEntity) =>
-      set((state) => {
-        const operation = updateEntityOperation({ name, partialEntity });
-        const context = {
-          graph: current(state.graph),
-          services: {},
-          validation: { validate: validateGraph }
-        };
-        const result = executor.execute(operation, context);
-
-        if (!result.success) {
-          const errors = result.diagnostics
-            .filter(d => d.severity === "error")
-            .map(d => d.message).join(" | ");
-          throw new Error(errors);
-        }
-        state.graph = result.graph;
-      }),
-
-    removeEntity: (name) =>
-      set((state) => {
-        const operation = deleteEntityOperation({ name });
-        const context = {
-          graph: current(state.graph),
-          services: {},
-          validation: { validate: validateGraph }
-        };
-        const result = executor.execute(operation, context);
-
-        if (!result.success) {
-          const errors = result.diagnostics
-            .filter(d => d.severity === "error")
-            .map(d => d.message).join(" | ");
-          throw new Error(errors);
-        }
-        state.graph = result.graph;
-      }),
-
-    // AI Intent Integration Boundary
+    // --- AI INTENT BOUNDARY ---
     applyIntent: (intent) => {
       let resultPayload = { success: false, message: "" };
 
       set((state) => {
-        // Handle Clarification and Error statuses without invoking the executor
-        if (intent.status === "needs_clarification" || intent.status === "error") {
-          resultPayload = { success: false, message: intent.message || intent.status };
-          return; // Do not mutate
-        }
-
         const context = {
           graph: current(state.graph),
           services: {},
           validation: { validate: validateGraph }
         };
 
-        // Execute sequential atomic commit via IntentAdapter
+        // Delegate status and payload processing to IntentAdapter entirely
         const result = intentAdapter.applyIntent(intent, context);
 
         if (result.success) {
-          state.graph = result.graph; // ONE atomic commit
+          state.graph = result.graph; 
           resultPayload = { success: true, message: "Architecture successfully updated." };
         } else {
-          const errors = result.diagnostics.map((d: any) => d.message).join(" | ");
+          const errors = result.diagnostics?.map((d: any) => d.message).join(" | ") || result.message || "Intent rejected.";
           resultPayload = { success: false, message: errors };
         }
       });
 
       return resultPayload;
     },
-
-    addRelation: (relation) =>
-      set((state) => {
-        state.graph.relations.push(relation);
-      }),
-
-    addEndpoint: (endpoint) =>
-      set((state) => {
-        state.graph.endpoints.push(endpoint);
-      }),
-
-    updateEndpointPath: (method, oldPath, newPath) =>
-      set((state) => {
-        const target = state.graph.endpoints.find(
-          (ep) => ep.method === method && ep.path === oldPath
-        );
-        if (target) target.path = newPath;
-      }),
-
-    addEvent: (event) =>
-      set((state) => {
-        state.graph.events[event.name] = event;
-      }),
-
-    addWorkflow: (workflow) =>
-      set((state) => {
-        state.graph.workflows.push(workflow);
-      }),
   }))
 );

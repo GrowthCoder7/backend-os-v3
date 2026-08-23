@@ -24,6 +24,12 @@ importers:
       '@repo/intent':
         specifier: workspace:*
         version: link:packages/intent
+      '@repo/store':
+        specifier: workspace:*
+        version: link:packages/store
+      '@repo/types':
+        specifier: workspace:*
+        version: link:packages/types
       '@repo/validation':
         specifier: workspace:*
         version: link:packages/validation

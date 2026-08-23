@@ -14,7 +14,8 @@
     "test": "vitest run",
     "verify:sprint6": "node --import tsx verify-sprint6.ts",
     "verify:sprint6:gemini": "node --env-file=.env --import tsx verify-sprint6-gemini.ts",
-    "verify:sprint6:integration": "node --env-file=.env --import tsx verify-sprint6-integration.ts"
+    "verify:sprint6:integration": "node --env-file=.env --import tsx verify-sprint6-integration.ts",
+    "verify:sprint7":"tsx verify-sprint7.ts"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
@@ -27,7 +28,9 @@
     "@repo/compiler": "workspace:*",
     "@repo/executor": "workspace:*",
     "@repo/intent": "workspace:*",
-    "@repo/validation": "workspace:*"
+    "@repo/validation": "workspace:*",
+    "@repo/store":"workspace:*",
+    "@repo/types":"workspace:*"
   },
   "dependencies": {
     "zustand": "^5.0.12"
