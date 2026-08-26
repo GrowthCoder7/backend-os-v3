@@ -2,8 +2,11 @@ import { GoogleGenAI } from "@google/genai";
 import { AIProvider, IntentRequest, IntentResponse } from "./types";
 import { SYSTEM_PROMPT } from "./prompts";
 import { IntentResponseSchema } from "./schema";
+import { AIError } from "./errors";
+import { withRetry } from "./retry";
+import { serializeGraphContext } from "./context";
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -22,80 +25,73 @@ export class GeminiProvider implements AIProvider {
   }
 
   async generateIntent(request: IntentRequest): Promise<IntentResponse> {
+    const contextStr = serializeGraphContext(request.graph);
+    
     try {
-      const response = await this.client.models.generateContent({
-        model: DEFAULT_GEMINI_MODEL,
-        contents: request.prompt,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          responseMimeType: "application/json",
-        },
+      return await withRetry(async (attempt: number, lastError?: AIError) => {
+        let promptText = `User Request: ${request.prompt}\n\nCurrent Architecture Context:\n${contextStr}`;
+
+        if (attempt > 1 && lastError) {
+          promptText += `\n\n=== PREVIOUS ATTEMPT FAILED ===\nError Type: ${lastError.kind}\nMessage: ${lastError.message}\n`;
+          if (lastError.rawOutput) {
+            promptText += `Your previous malformed output:\n${lastError.rawOutput}\n`;
+          }
+          promptText += `\nPlease correct the output to strictly conform to the JSON schema. Ensure operations use exactly { "type": "...", "payload": { ... } } without extraneous fields.`;
+        }
+
+        let response;
+        try {
+          response = await this.client.models.generateContent({
+            model: DEFAULT_GEMINI_MODEL,
+            contents: promptText,
+            config: {
+              systemInstruction: SYSTEM_PROMPT,
+              responseMimeType: "application/json",
+            },
+          });
+        } catch (apiErr) {
+          throw new AIError("api", getErrorMessage(apiErr));
+        }
+
+        const rawText = response.text ?? "";
+        const cleanedText = rawText.replace(/^```json/m, "").replace(/```$/m, "").trim();
+
+        if (!cleanedText) {
+          throw new AIError("api", "Empty response received from model.");
+        }
+
+        let rawJson: unknown;
+        try {
+          rawJson = JSON.parse(cleanedText);
+        } catch (parseErr) {
+          throw new AIError("json", `Malformed JSON: ${getErrorMessage(parseErr)}`, cleanedText);
+        }
+
+        const parseResult = IntentResponseSchema.safeParse(rawJson);
+        if (!parseResult.success) {
+          throw new AIError("schema", `Schema validation failed: ${parseResult.error.message}`, cleanedText);
+        }
+
+        const data = parseResult.data;
+
+        // Status Invariants
+        if (data.status === "success" && data.operations.length === 0) {
+          throw new AIError("invariant", "Status 'success' requires >= 1 operations.", cleanedText);
+        }
+        if ((data.status === "needs_clarification" || data.status === "error") && data.operations.length > 0) {
+          throw new AIError("invariant", `Status '${data.status}' must contain zero operations.`, cleanedText);
+        }
+        if ((data.status === "needs_clarification" || data.status === "error") && (!data.message || data.message.trim() === "")) {
+          throw new AIError("invariant", `Status '${data.status}' requires a non-empty message.`, cleanedText);
+        }
+
+        return data as IntentResponse;
       });
-
-      const rawText = response.text ?? "";
-      const cleanedText = rawText.replace(/^```json/m, "").replace(/```$/m, "").trim();
-
-      if (!cleanedText) {
-        return {
-          status: "error",
-          message: "Empty response received from Gemini model.",
-          operations: [],
-        };
-      }
-
-      let rawJson: unknown;
-      try {
-        rawJson = JSON.parse(cleanedText);
-      } catch (parseError) {
-        return {
-          status: "error",
-          message: `Malformed JSON from model: ${getErrorMessage(parseError)}`,
-          operations: [],
-        };
-      }
-
-      const parseResult = IntentResponseSchema.safeParse(rawJson);
-      if (!parseResult.success) {
-        return {
-          status: "error",
-          message: `AI output failed strict schema validation: ${parseResult.error.message}`,
-          operations: [],
-        };
-      }
-
-      const data = parseResult.data;
-
-      // Enforce Status Invariants
-      if (data.status === "success") {
-        if (data.operations.length === 0) {
-          return {
-            status: "error",
-            message: "Invariant violation: status 'success' requires at least one operation.",
-            operations: [],
-          };
-        }
-      } else if (data.status === "needs_clarification" || data.status === "error") {
-        if (data.operations.length > 0) {
-          return {
-            status: "error",
-            message: `Invariant violation: status '${data.status}' must contain zero operations.`,
-            operations: [],
-          };
-        }
-        if (!data.message || data.message.trim() === "") {
-          return {
-            status: "error",
-            message: `Invariant violation: status '${data.status}' requires a non-empty message.`,
-            operations: [],
-          };
-        }
-      }
-
-      return data as IntentResponse;
     } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       return {
         status: "error",
-        message: `Failed to generate intent: ${getErrorMessage(error)}`,
+        message: `AI Intent Generation Failed (Max Retries Exceeded): ${msg}`,
         operations: [],
       };
     }

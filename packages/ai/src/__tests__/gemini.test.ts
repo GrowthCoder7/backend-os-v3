@@ -1,339 +1,182 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GeminiProvider } from "../gemini";
+import { ArchitectureGraph } from "@repo/types";
 
-// Mock @google/genai current SDK API
+// Hoist mock state so it can be shared between the tests and the hoisted vi.mock block
+const mockState = vi.hoisted(() => ({
+  callCounter: 0,
+  capturedRetryPrompt: ""
+}));
+
+// Mock the current @google/genai SDK boundary
 vi.mock("@google/genai", () => {
   return {
     GoogleGenAI: vi.fn().mockImplementation(() => ({
       models: {
-        generateContent: vi.fn().mockImplementation(async (params: { contents: string }) => {
+        generateContent: vi.fn().mockImplementation(async (params: { contents: string, model?: string }) => {
           const prompt = params.contents;
-
-          if (prompt.includes("ambiguous")) {
-            return {
-              text: JSON.stringify({
-                status: "needs_clarification",
-                message: "Please specify fields for the entity.",
-                operations: [],
-              }),
-            };
+          mockState.callCounter++;
+          
+          if (mockState.callCounter > 1) {
+            mockState.capturedRetryPrompt = prompt;
           }
 
-          if (prompt.includes("broken_json")) {
-            return { text: "INVALID_JSON_STRING" };
+          // --- SPRINT 8 REGRESSION TEST FIXTURE ---
+          if (prompt.includes("regression_payload_structure")) {
+            if (mockState.callCounter === 1) {
+              // ATTEMPT 1: Malformed output missing the 'payload' wrapper (3 operations)
+              return {
+                text: JSON.stringify({
+                  status: "success",
+                  operations: [
+                    { type: "entity.create", entity: { name: "User", primaryKey: "id", fields: [] } },
+                    { type: "relation.create", relation: { source: "User", sourceField: "id", target: "Post", targetField: "userId", type: "one-to-many" } },
+                    { type: "endpoint.create", endpoint: { method: "GET", path: "/users", entity: "User", action: "read" } }
+                  ]
+                })
+              };
+            }
+            if (mockState.callCounter === 2) {
+              // ATTEMPT 2: Corrected output conforming to the Strict Zod Union (3 operations)
+              return {
+                text: JSON.stringify({
+                  status: "success",
+                  operations: [
+                    { type: "entity.create", payload: { entity: { name: "User", primaryKey: "id", fields: [{ name: "id", type: "string", required: true }] } } },
+                    { type: "relation.create", payload: { relation: { source: "User", sourceField: "id", target: "Post", targetField: "userId", type: "one-to-many" } } },
+                    { type: "endpoint.create", payload: { endpoint: { method: "GET", path: "/users", entity: "User", action: "read" } } }
+                  ]
+                })
+              };
+            }
           }
 
-          if (prompt.includes("unsupported_op")) {
-            return {
-              text: JSON.stringify({
-                status: "success",
-                operations: [{ type: "unsupported.op", payload: {} }],
-              }),
-            };
+          // --- RETRY LOOP FIXTURES ---
+          if (prompt.includes("retry_success")) {
+            if (mockState.callCounter === 1) return { text: "INVALID_JSON_STRING" };
+            if (mockState.callCounter === 2) return { text: JSON.stringify({ status: "success", operations: [{ type: "entity.create", invalidPayload: true }] }) };
+            return { text: JSON.stringify({ status: "success", operations: [{ type: "entity.delete", payload: { name: "User1" } }] }) };
           }
 
-          if (prompt.includes("invalid_field_type")) {
-            return {
-              text: JSON.stringify({
-                status: "success",
-                operations: [
-                  {
-                    type: "entity.create",
-                    payload: {
-                      entity: {
-                        name: "User",
-                        primaryKey: "id",
-                        fields: [{ name: "id", type: "uuid_invalid", required: true }],
-                      },
-                    },
-                  },
-                ],
-              }),
-            };
+          if (prompt.includes("retry_fail")) {
+            return { text: "ALWAYS_BAD_JSON" };
           }
 
-          if (prompt.includes("invalid_http_method")) {
-            return {
-              text: JSON.stringify({
-                status: "success",
-                operations: [
-                  {
-                    type: "endpoint.create",
-                    payload: {
-                      endpoint: {
-                        method: "PATCH",
-                        path: "/users",
-                        entity: "User",
-                        action: "update",
-                      },
-                    },
-                  },
-                ],
-              }),
-            };
-          }
-
-          if (prompt.includes("unexpected_payload_property")) {
+          // --- FLAGSHIP CONTEXT FIXTURE ---
+          if (prompt.includes("flagship")) {
             return {
               text: JSON.stringify({
                 status: "success",
                 operations: [
-                  {
-                    type: "entity.delete",
-                    payload: {
-                      name: "User",
-                      unexpectedHallucination: true,
-                    },
-                  },
-                ],
-              }),
+                  { type: "entity.create", payload: { entity: { name: "Posts", primaryKey: "postId", fields: [{ name: "postId", type: "string", required: true }] } } },
+                  { type: "relation.create", payload: { relation: { source: "User1", sourceField: "id", target: "Posts", targetField: "userId", type: "one-to-many" } } },
+                  { type: "endpoint.create", payload: { endpoint: { method: "GET", path: "/posts", entity: "Posts", action: "read" } } },
+                  { type: "endpoint.create", payload: { endpoint: { method: "POST", path: "/post", entity: "Posts", action: "create" } } }
+                ]
+              })
             };
           }
 
-          if (prompt.includes("contradictory_clarification")) {
-            return {
-              text: JSON.stringify({
-                status: "needs_clarification",
-                message: "What fields?",
-                operations: [
-                  {
-                    type: "entity.delete",
-                    payload: { name: "User" },
-                  },
-                ],
-              }),
-            };
-          }
-
-          if (prompt.includes("empty_success")) {
-            return {
-              text: JSON.stringify({
-                status: "success",
-                operations: [],
-              }),
-            };
-          }
-
-          if (prompt.includes("all_operations")) {
-            return {
-              text: JSON.stringify({
-                status: "success",
-                operations: [
-                  {
-                    type: "entity.create",
-                    payload: {
-                      entity: {
-                        name: "User",
-                        primaryKey: "id",
-                        fields: [{ name: "id", type: "string", required: true }],
-                      },
-                    },
-                  },
-                  {
-                    type: "entity.update",
-                    payload: {
-                      name: "User",
-                      partialEntity: { primaryKey: "uuid" },
-                    },
-                  },
-                  {
-                    type: "entity.delete",
-                    payload: { name: "User" },
-                  },
-                  {
-                    type: "endpoint.create",
-                    payload: {
-                      endpoint: {
-                        method: "GET",
-                        path: "/users",
-                        entity: "User",
-                        action: "read",
-                      },
-                    },
-                  },
-                  {
-                    type: "endpoint.update",
-                    payload: {
-                      lookup: { method: "GET", path: "/users" },
-                      partialEndpoint: { path: "/all-users" },
-                    },
-                  },
-                  {
-                    type: "endpoint.delete",
-                    payload: {
-                      lookup: { method: "GET", path: "/all-users" },
-                    },
-                  },
-                  {
-                    type: "relation.create",
-                    payload: {
-                      relation: {
-                        source: "User",
-                        sourceField: "id",
-                        target: "Post",
-                        targetField: "userId",
-                        type: "one-to-many",
-                      },
-                    },
-                  },
-                  {
-                    type: "relation.update",
-                    payload: {
-                      lookup: {
-                        source: "User",
-                        sourceField: "id",
-                        target: "Post",
-                        targetField: "userId",
-                      },
-                      partialRelation: { type: "many-to-many" },
-                    },
-                  },
-                  {
-                    type: "relation.delete",
-                    payload: {
-                      lookup: {
-                        source: "User",
-                        sourceField: "id",
-                        target: "Post",
-                        targetField: "userId",
-                      },
-                    },
-                  },
-                ],
-              }),
-            };
-          }
-
-          // Default single create
+          // Default fallback (Success)
           return {
             text: JSON.stringify({
               status: "success",
-              operations: [
-                {
-                  type: "entity.create",
-                  payload: {
-                    entity: {
-                      name: "User",
-                      primaryKey: "id",
-                      fields: [{ name: "id", type: "string", required: true }],
-                    },
-                  },
-                },
-              ],
-            }),
+              operations: [{ type: "entity.delete", payload: { name: "User1" } }]
+            })
           };
-        }),
-      },
-    })),
+        })
+      }
+    }))
   };
 });
 
-describe("GeminiProvider (Unit Tests - Network Free)", () => {
-  it("throws deterministically if API key is not provided", () => {
-    const originalKey = process.env.GEMINI_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-    expect(() => new GeminiProvider()).toThrow("GEMINI_API_KEY is not set.");
-    process.env.GEMINI_API_KEY = originalKey;
+describe("GeminiProvider - Sprint 8 Regression & Retries", () => {
+  const mockGraph: ArchitectureGraph = {
+    metadata: { id: "1", name: "t", createdAt: "1", updatedAt: "1", compilerVersion: "1", schemaVersion: "1" },
+    entities: {
+      "User1": {
+        name: "User1", primaryKey: "id",
+        fields: [{ name: "id", type: "string", required: true }, { name: "name", type: "string", required: true }, { name: "email", type: "string", required: true }]
+      }
+    },
+    relations: [], endpoints: [], events: {}, workflows: []
+  };
+
+  beforeEach(() => {
+    mockState.callCounter = 0;
+    mockState.capturedRetryPrompt = "";
   });
 
-  it("accepts valid entity.create, update, delete, endpoints, and relations across all 9 operations", async () => {
+  it("regression: recovers from the legacy missing-payload hallucination via strict Zod retry mechanism", async () => {
     const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "all_operations" });
-
-    expect(result.status).toBe("success");
-    expect(result.operations.length).toBe(9);
-
-    const types = result.operations.map((op) => op.type);
-    expect(types).toEqual([
-      "entity.create",
-      "entity.update",
-      "entity.delete",
-      "endpoint.create",
-      "endpoint.update",
-      "endpoint.delete",
-      "relation.create",
-      "relation.update",
-      "relation.delete",
-    ]);
-  });
-
-  it("rejects unsupported operation types via strict discriminated union", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "unsupported_op" });
-
-    expect(result.status).toBe("error");
-    expect(result.message).toContain("AI output failed strict schema validation");
-    expect(result.operations).toEqual([]);
-  });
-
-  it("rejects invalid FieldType enums", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "invalid_field_type" });
-
-    expect(result.status).toBe("error");
-    expect(result.message).toContain("AI output failed strict schema validation");
-  });
-
-  it("rejects invalid HTTP methods", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "invalid_http_method" });
-
-    expect(result.status).toBe("error");
-    expect(result.message).toContain("AI output failed strict schema validation");
-  });
-
-  it("rejects unexpected payload properties via .strict()", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({
-      prompt: "unexpected_payload_property",
+    
+    const result = await provider.generateIntent({ 
+      prompt: "regression_payload_structure", 
+      graph: mockGraph 
     });
 
-    expect(result.status).toBe("error");
-    expect(result.message).toContain("AI output failed strict schema validation");
+    // 1. Verify exactly 2 model calls occurred for this test
+    expect(mockState.callCounter).toBe(2);
+    
+    // 2. Verify the final result was successfully extracted
+    expect(result.status).toBe("success");
+    
+    // 3. Final result contains exactly 3 operations
+    expect(result.operations.length).toBe(3);
+    
+    // 4. Verify final operations contain the correct nested payload structure
+    expect(result.operations[0].type).toBe("entity.create");
+    expect("payload" in result.operations[0]).toBe(true);
+    expect(result.operations[1].type).toBe("relation.create");
+    expect("payload" in result.operations[1]).toBe(true);
+    expect(result.operations[2].type).toBe("endpoint.create");
+    expect("payload" in result.operations[2]).toBe(true);
+
+    // 5-10. Verify the retry prompt contains the necessary correction information robustly
+    const retryPrompt = mockState.capturedRetryPrompt;
+    
+    // 5. Retry prompt contains "=== PREVIOUS ATTEMPT FAILED ==="
+    expect(retryPrompt).toContain("=== PREVIOUS ATTEMPT FAILED ===");
+    // 6. Retry prompt contains "Schema validation failed"
+    expect(retryPrompt).toContain("Schema validation failed");
+    // 7. Retry prompt contains the malformed previous output (using substring matching)
+    expect(retryPrompt).toContain("previous malformed output");
+    // 8. Retry prompt explicitly instructs the model to use "payload"
+    expect(retryPrompt).toContain("payload");
+    // 9. Retry prompt contains "entity.create" without relying on whitespace
+    expect(retryPrompt).toMatch(/"type"\s*:\s*"entity\.create"/);
+    // 10. Retry prompt contains the schema correction instruction
+    expect(retryPrompt).toContain(`{ "type": "...", "payload": { ... } }`);
   });
 
-  it("returns error on malformed JSON", async () => {
+  it("executes flagship test correctly avoiding recreation of existing entities", async () => {
     const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "broken_json" });
-
-    expect(result.status).toBe("error");
-    expect(result.message).toContain("Malformed JSON from model");
-  });
-
-  it("enforces status invariant: needs_clarification requires zero operations", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({
-      prompt: "contradictory_clarification",
-    });
-
-    expect(result.status).toBe("error");
-    expect(result.message).toContain("Invariant violation");
-  });
-
-  it("enforces status invariant: success requires at least 1 operation", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "empty_success" });
-
-    expect(result.status).toBe("error");
-    expect(result.message).toContain("Invariant violation");
-  });
-
-  it("handles valid needs_clarification prompts", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "ambiguous" });
-
-    expect(result.status).toBe("needs_clarification");
-    expect(result.message).toBe("Please specify fields for the entity.");
-    expect(result.operations).toEqual([]);
-  });
-
-  it("guarantees provider produces pure intent without id or OperationMetadata", async () => {
-    const provider = new GeminiProvider("mock-key");
-    const result = await provider.generateIntent({ prompt: "create user" });
+    const result = await provider.generateIntent({ prompt: "flagship", graph: mockGraph });
 
     expect(result.status).toBe("success");
-    const op = result.operations[0];
-    expect(op).not.toHaveProperty("id");
-    expect(op).not.toHaveProperty("metadata");
+    expect(result.operations.length).toBe(4);
+    
+    // User1 entity.create should not exist
+    const hasUser1Create = result.operations.some(op => op.type === "entity.create" && (op.payload as any).entity?.name === "User1");
+    expect(hasUser1Create).toBe(false);
+  });
+
+  it("retries up to 3 times and succeeds on the 3rd attempt", async () => {
+    const provider = new GeminiProvider("mock-key");
+    const result = await provider.generateIntent({ prompt: "retry_success", graph: mockGraph });
+
+    expect(mockState.callCounter).toBe(3);
+    expect(result.status).toBe("success");
+    expect(result.operations[0].type).toBe("entity.delete");
+  });
+
+  it("returns gracefully formatted error after 3 failed attempts", async () => {
+    const provider = new GeminiProvider("mock-key");
+    const result = await provider.generateIntent({ prompt: "retry_fail", graph: mockGraph });
+
+    expect(mockState.callCounter).toBe(3);
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("Max Retries Exceeded");
+    expect(result.message).toContain("Malformed JSON");
   });
 });

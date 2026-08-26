@@ -10,8 +10,11 @@ import {
   DeleteRelationPayload,
 } from "@repo/operations";
 
+import {ArchitectureGraph} from "@repo/types"
+
 export interface IntentRequest {
   prompt: string;
+  graph:ArchitectureGraph;
 }
 
 export type IntentOperation =
