@@ -1,159 +1,100 @@
-# Turborepo starter
+# Backend OS
 
-This Turborepo starter is maintained by the Turborepo core team.
+**Backend OS** is an architecture-driven backend compiler platform that transforms high-level system architecture into production-ready backend applications through a deterministic compilation pipeline.
 
-## Using this example
+Unlike conventional backend frameworks, Backend OS treats software architecture as the primary executable specification. Developers describe a backend using a framework-independent **Architecture Graph** that captures the logical structure of the system—including entities, relationships, endpoints, workflows, events, and project configuration. This graph becomes the single source of truth for the entire platform.
 
-Run the following command:
+Every subsequent artifact—including validation results, semantic models, compiler outputs, generated source code, database schemas, API specifications, and documentation—is deterministically derived from this architecture.
 
-```sh
-npx create-turbo@latest
-```
+## Core Philosophy
 
-## What's inside?
+Backend OS is a **compiler platform** designed specifically for backend software engineering. It provides an end-to-end environment for designing, validating, compiling, inspecting, and generating backend systems while maintaining complete separation between architectural intent and implementation technology.
 
-This Turborepo includes the following packages/apps:
+The platform consists of six major capabilities:
+- **Architecture Modeling** - Design backend systems using the Architecture Graph
+- **Architecture Validation** - Verify structural correctness and consistency
+- **Semantic Analysis** - Resolve architectural meaning and dependencies
+- **Compiler Pipeline** - Transform architecture into Backend Intermediate Representation (Backend IR)
+- **Backend IR** - The canonical compiled representation
+- **Code Generation Framework** - Generate framework-specific implementations (e.g., NestJS)
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+## Quick Start
 
 ```sh
-cd my-turborepo
-turbo build
+# Install dependencies
+cd backend-os-v3
+pnpm install
+
+# Build all packages
+pnpm build
+
+# Run development server
+pnpm dev
 ```
 
-Without global `turbo`, use your package manager:
+## Architecture
 
-```sh
-cd my-turborepo
-npx turbo build
-bun dlx turbo build
-bun exec turbo build
+The compiler pipeline flows through these stages:
+
+```
+Architecture Graph
+      │
+      ▼
+Validation Engine
+      │
+      ▼
+Semantic Analysis
+      │
+      ▼
+Compiler Pipeline
+      │
+      ▼
+Backend IR
+      │
+      ▼
+Code Generation Framework
+      │
+      ▼
+Generated Backend Application
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Key Concepts
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+- **Architecture Graph** - The single source of truth for backend design
+- **Architecture Operations** - All modifications represented as structured operations
+- **Operation Executor** - The sole authority for graph mutation
+- **Backend IR** - Compiler output consumed by generators
+- **Deterministic Compilation** - Same architecture always produces identical results
+- **Framework Independence** - Architecture remains independent of implementation technologies
 
-```sh
-turbo build --filter=docs
+## Repository Structure
+
+```
+backend-os-v3/
+├── apps/              # Applications (web interface, docs)
+├── packages/          # Packages (types, store, validation, compiler, generators, etc.)
+├── docs/              # Documentation (constitution, architecture, domain models, decisions)
+├── verify-sprint*.ts  # Sprint verification harnesses
+├── package.json       # Root package configuration
+└── turbo.json         # Turborepo configuration
 ```
 
-Without global `turbo`:
+## Documentation
 
-```sh
-npx turbo build --filter=docs
-bun exec turbo build --filter=docs
-bun exec turbo build --filter=docs
-```
+The project is governed by these canonical documents (in order of authority):
 
-### Develop
+1. `00_PROJECT_CONSTITUTION.md` - Vision, philosophy, governance, engineering values
+2. `01_ARCHITECTURE_SPECIFICATION.md` - System architecture, compiler pipeline, subsystem responsibilities
+3. `02_DOMAIN_MODEL_SPECIFICATION.md` - Canonical domain objects and platform vocabulary
+4. `03_BACKEND_OS_MASTER_CONTEXT.md` - Current engineering context, methodology, implementation status, roadmap
+5. `DECISIONS.md` - Accepted engineering and implementation decisions (ADRs)
 
-To develop all apps and packages, run the following command:
+## Development
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Backend OS follows an architecture-first engineering process. Contributors should approach development with the mindset of building infrastructure rather than building an application. Infrastructure is expected to remain stable, evolve predictably, expose reliable contracts, support extension, and outlive individual implementation decisions.
 
-```sh
-cd my-turborepo
-turbo dev
-```
+Every line of code should strengthen the platform rather than merely satisfy an immediate requirement.
 
-Without global `turbo`, use your package manager:
+## License
 
-```sh
-cd my-turborepo
-npx turbo dev
-bun exec turbo dev
-bun exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-bun exec turbo dev --filter=web
-bun exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-bun exec turbo login
-bun exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-bun exec turbo link
-bun exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+MIT
