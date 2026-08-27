@@ -73,7 +73,7 @@ interface GraphState {
   addWorkflow: (workflow: Workflow) => void;
 
   // AI Intent Boundary
-  applyIntent: (intent: IntentResponse) => { success: boolean, message?: string };
+  applyIntent: (intent: IntentResponse) => { success: boolean, message?: string ,diagnostics?: any[];};
 }
 
 const initialGraph: ArchitectureGraph = {
@@ -160,7 +160,13 @@ export const useGraphStore = create<GraphState>()(
 
     // --- AI INTENT BOUNDARY ---
     applyIntent: (intent) => {
-      let resultPayload = { success: false, message: "" };
+      let resultPayload: {
+  success: boolean;
+  message?: string;
+  diagnostics?: any[];
+} = {
+  success: false,
+};
 
       set((state) => {
         const context = {
@@ -175,10 +181,20 @@ export const useGraphStore = create<GraphState>()(
         if (result.success) {
           state.graph = result.graph; 
           resultPayload = { success: true, message: "Architecture successfully updated." };
-        } else {
-          const errors = result.diagnostics?.map((d: any) => d.message).join(" | ")  || "Intent rejected.";
-          resultPayload = { success: false, message: errors };
-        }
+        }  else {
+  const diagnostics = result.diagnostics ?? [];
+
+  const errors = diagnostics
+    .map((d: any) => d?.message)
+    .filter(Boolean)
+    .join(" | ");
+
+  resultPayload = {
+    success: false,
+    message: errors || "Intent rejected.",
+    diagnostics,
+  };
+}
       });
 
       return resultPayload;

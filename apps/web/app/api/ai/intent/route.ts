@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { GeminiProvider } from "@repo/ai";
+import type { ArchitectureGraph } from "@repo/types";
 
 export async function POST(request: Request) {
   try {
-    // Ensure API key is configured on the server
+    // 1. Server-side API key validation
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
         { status: "error", message: "Server configuration error: GEMINI_API_KEY missing." },
@@ -11,8 +12,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Parse and validate the request payload
-    let body;
+    // 2. Safely parse JSON payload
+    let body: any;
     try {
       body = await request.json();
     } catch {
@@ -23,6 +24,9 @@ export async function POST(request: Request) {
     }
 
     const prompt = body?.prompt;
+    const rawGraph = body?.graph;
+
+    // 3. Prompt validation
     if (!prompt || typeof prompt !== "string" || prompt.trim() === "") {
       return NextResponse.json(
         { status: "error", message: "Invalid request: 'prompt' must be a non-empty string." },
@@ -30,11 +34,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // Safely instantiate and invoke the provider server-side
-    const provider = new GeminiProvider();
-    const intentResponse = await provider.generateIntent({ prompt });
+    // 4. Graph context validation
+    if (!rawGraph || typeof rawGraph !== "object") {
+      return NextResponse.json(
+        { status: "error", message: "Invalid request: 'graph' must be provided." },
+        { status: 400 }
+      );
+    }
 
-    // Return the IntentResponse object to the client
+    const graph = rawGraph as ArchitectureGraph;
+
+    // 5. Instantiate and call provider securely
+    const provider = new GeminiProvider();
+    const intentResponse = await provider.generateIntent({
+      prompt,
+      graph
+    });
+
     return NextResponse.json(intentResponse);
     
   } catch (error: any) {

@@ -4,12 +4,17 @@ export function serializeGraphContext(graph: ArchitectureGraph): string {
   // Deterministic serialization of read-only architecture state
   const entities = Object.keys(graph.entities)
     .sort()
-    .map((name) => {
+    .flatMap((name) => {
       const e = graph.entities[name];
+      
+      // Explicit undefined guard for strict mode (noUncheckedIndexedAccess)
+      if (!e) return [];
+
       const fields = [...e.fields]
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((f) => ({ name: f.name, type: f.type, required: f.required }));
-      return { name: e.name, primaryKey: e.primaryKey, fields };
+        
+      return [{ name: e.name, primaryKey: e.primaryKey, fields }];
     });
 
   const relations = [...graph.relations].sort(

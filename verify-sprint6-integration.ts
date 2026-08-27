@@ -71,6 +71,21 @@ async function main() {
 
   const intent = await ai.generateIntent({
     prompt,
+    graph: {
+    metadata: {
+      id: "sprint6-gemini-verifier",
+      name: "Sprint 6 Gemini Verifier",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      compilerVersion: "1",
+      schemaVersion: "1",
+    },
+    entities: {},
+    relations: [],
+    endpoints: [],
+    events: {},
+    workflows: [],
+  },
   });
 
   console.log(`AI status: ${intent.status}`);

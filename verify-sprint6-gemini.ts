@@ -10,12 +10,29 @@ async function verifySprint6Gemini() {
 
   const provider = new GeminiProvider();
 
-  console.log("Dispatching prompt to Gemini 3.7 Flash...");
+  console.log("Dispatching prompt to Gemini 3.6 Flash...");
   const prompt =
     "Create a User entity with id, name, and email fields. Then add GET /users and POST /users endpoints.";
   console.log(`Prompt: "${prompt}"\n`);
 
-  const response = await provider.generateIntent({ prompt });
+  const response = await provider.generateIntent({
+  prompt,
+  graph: {
+    metadata: {
+      id: "sprint6-gemini-verifier",
+      name: "Sprint 6 Gemini Verifier",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      compilerVersion: "1",
+      schemaVersion: "1",
+    },
+    entities: {},
+    relations: [],
+    endpoints: [],
+    events: {},
+    workflows: [],
+  },
+});
 
   console.log(`1. AI Response Status: ${response.status}`);
   if (response.message) {
