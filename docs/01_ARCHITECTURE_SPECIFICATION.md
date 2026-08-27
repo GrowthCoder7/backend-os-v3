@@ -263,48 +263,46 @@ Backend OS follows a deterministic architecture compilation pipeline.
 ```
 Developer
       │
-      ▼
-Visual Builder / AI / Import / CLI
+      ├─────────────── Visual Builder
+      │                       │
+      │                       ▼
+      │                Architecture Operations
       │
-      ▼
-Architecture Operations
+   ├─────────────── Import / CLI
+      │                       │
+      │                       ▼
+      │                Architecture Operations
       │
-      ▼
-Architecture Operation Executor
-      │
-      ▼
-Architecture Graph
-      │
-      ▼
-Validation Engine
-      │
-      ▼
-Semantic Analysis
-      │
-      ▼
-Compiler Pipeline
-      ├── Normalization Pass
-      ├── IR Generation Pass
-      ├── Optimization Pass
-      └── Artifact Preparation Pass
-      │
-      ▼
-Backend Intermediate Representation
-      │
-      ▼
-Code Generation Framework
-      ├── HTTP Framework Generator
-      ├── ORM Generator
-      ├── API Generator
-      └── Documentation Generator
-      │
-      ▼
-Generated Backend Project
+   └─────────────── AI Assistant
+                           │
+                 Natural Language
+                           +
+                  Architecture Context
+                           │
+                           ▼
+                       AI Provider
+                           │
+                           ▼
+                   IntentResponse
+                           │
+                           ▼
+                     IntentAdapter
+                           │
+                           ▼
+                 Architecture Operations
+                           │
+                           ▼
+                 Operation Executor
+                           │
+                           ▼
+                  Architecture Graph
 ```
 
-Each stage performs exactly one responsibility and communicates only through explicit contracts.
+The key architectural distinction is:
 
-No subsystem may bypass an earlier stage or mutate artifacts produced by previous stages.
+> **AI produces intent; it does not directly produce or mutate architecture.**
+
+This is consistent with the existing single-editing-pipeline principle.
 
 ---
 
@@ -314,9 +312,17 @@ The lifecycle of a backend project within Backend OS follows a deterministic seq
 
 ### Stage 1 — Architecture Creation
 
-Developers describe the architecture of a backend system using the Visual Builder, AI Assistant, Import System, or CLI.
+Developers describe the architecture of a backend system using the Visual
+Builder, Import System, or CLI.
 
-Regardless of its origin, every modification is converted into Architecture Operations and executed through the Architecture Operation Executor.
+AI Assistant may also initiate architectural intent through
+natural-language requests. These requests are processed using Architecture
+Context, translated into Architecture Operations through the Intent
+Adapter, and then executed through the Architecture Operation Executor.
+
+Regardless of origin, every architectural modification ultimately becomes
+one or more Architecture Operations and passes through the Architecture
+Operation Executor.
 
 ---
 
@@ -352,9 +358,15 @@ Each generator consumes the same Backend IR while producing framework-specific o
 
 ### Stage 6 — Platform Services
 
-Platform services such as Preview, Runtime, and AI Assistance consume Backend IR to provide visualization, simulation, diagnostics, and developer tooling.
+Platform services such as Preview, Runtime, and AI Assistance provide developer tooling around the platform.
 
-These services never modify the Architecture Graph or participate in compilation.
+Preview and analysis services consume compiled representations where appropriate.
+
+**AI intent generation** consumes natural-language input together with a read-only context derived from the Architecture Graph.
+
+AI Assistance produces intent but does not modify the Architecture Graph directly.
+
+Platform services do not bypass the canonical editing or compilation pipelines.
 
 ---
 
@@ -839,6 +851,155 @@ The following subsystems execute operations through the Operation Executor:
 - Future Automation Services
 
 No subsystem may modify the Architecture Graph without using the Operation Executor.
+
+# AI Assistant
+
+## Purpose
+
+The AI Assistant converts natural-language architectural requests into
+validated architectural intent.
+
+The AI Assistant is context-aware but is not an architectural mutation
+authority.
+
+## Responsibilities
+
+The AI Assistant is responsible for:
+
+- Interpreting natural-language architecture requests
+- Consuming relevant Architecture Context
+- Producing structured IntentResponse objects
+- Performing structural validation of AI output
+- Recovering from malformed model responses through bounded retry
+- Reporting AI-generation diagnostics
+
+## Non-Responsibilities
+
+The AI Assistant is not responsible for:
+
+- Directly modifying the Architecture Graph
+- Constructing canonical Architecture Operations
+- Executing Architecture Operations
+- Validating complete graph integrity
+- Compiling architecture
+- Generating Backend IR
+
+These responsibilities belong to the Intent Adapter,
+Operation Executor, Validation Engine, and Compiler Pipeline respectively.
+
+## Inputs
+
+The AI Assistant receives:
+
+- Natural-language architectural requests
+- Architecture Context (read-only derived representation of the
+  current Architecture Graph)
+
+## Outputs
+
+The AI Assistant produces:
+
+- IntentResponse objects (structured architectural intent)
+- AI-generation diagnostics
+
+## Dependencies
+
+The AI Assistant depends on:
+
+- AI Provider contract
+- Architecture Context (read-only)
+- Intent Adapter (for translation to canonical operations)
+
+It does not depend on:
+
+- Architecture Graph mutation authority
+- Compiler Pipeline
+- Backend IR
+- Code Generation Framework
+
+## Constraints
+
+### Context-Aware Only
+
+The AI Assistant may only use architectural information supplied through
+Architecture Context. It must not infer or assume architectural elements
+that are not explicitly present.
+
+### Structured Output Required
+
+AI-generated output must conform to the IntentResponse contract before
+being passed to the Intent Adapter. Malformed output is rejected.
+
+### Bounded Retry
+
+Malformed responses may be retried up to a maximum of three attempts.
+Only structurally valid IntentResponse objects may proceed.
+
+---
+
+### Intent Execution Semantics
+
+Operations produced from a validated IntentResponse execute sequentially
+in the order supplied by the intent.
+
+No semantic or topological reordering is performed by the Intent Adapter.
+
+An intent is applied atomically. If any operation produced from an intent
+fails, the architectural state is restored to its state before intent
+execution began.
+
+No partial intent mutation may be committed.
+
+---
+
+## AI Context
+
+AI Context is a read-only derived representation of the current
+Architecture Graph used by the AI Assistant for context-aware intent
+generation.
+
+AI Context is not an independent architectural model and is never a
+source of truth.
+
+The Architecture Graph remains the single source of truth.
+
+AI Context may contain relevant architectural information such as:
+
+- Entities
+- Fields
+- Relationships
+- Endpoints
+- Relevant architectural metadata
+
+AI Context is derived from the current Architecture Graph and supplied
+to the AI Provider alongside natural-language input.
+
+AI Context never modifies the Architecture Graph.
+
+### Structured Output Recovery
+
+AI-generated responses must conform to the IntentResponse contract before
+they are passed to the Intent Adapter.
+
+Malformed responses may be retried up to a maximum of three attempts.
+
+Only a structurally valid IntentResponse may proceed to intent translation.
+
+If all attempts fail, the request terminates with an AI diagnostic and no
+architectural mutation occurs.
+
+---
+
+## AI Provider Independence
+
+The AI Assistant communicates with model providers through the AI Provider
+contract.
+
+The editing engine, Architecture Operations, Intent Adapter, and Operation
+Executor do not depend on a specific model provider.
+
+Adding or replacing an AI provider must not require changes to the
+canonical architecture mutation pipeline.
 
 ---
 
@@ -2599,7 +2760,6 @@ Backend IR serves as the primary input for:
 
 - Code Generation Framework
 - Preview System
-- AI Assistant
 - Architecture Analysis Tools
 
 Consumers should treat Backend IR as read-only.

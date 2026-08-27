@@ -9,13 +9,13 @@
 | Property | Value |
 |----------|-------|
 | Document | BACKEND_OS_MASTER_CONTEXT.md |
-| Version | 1.3.0 |
+| Version | 1.4.0 |
 | Status | Active |
 | Authority | Canonical Engineering Context |
 | Architecture Version | 1.0 (Frozen) |
 | Repository Phase | Phase 2 — Core Platform Development |
 | Project Type | Compiler Platform |
-| Last Updated | 22 August 2026 |
+| Last Updated | 27 August 2026 |
 
 ---
 
@@ -172,7 +172,20 @@ Current progress includes, but is not limited to:
 - Sprint 3: Relation and Endpoint operation execution surface complete and verified
 - Sprint 4: Backend IR → NestJS generator framework complete and deterministic; generated project builds cleanly
 - Sprint 5: End-to-end materialize → install → build → start → live HTTP CRUD verification complete
-- Sprint 6: AI intent interpretation package (`@repo/ai`) introduced using Google Gemini to translate natural language into Architecture Operations
+- Sprint 6: AI intent interpretation and A+B integration complete and verified.
+  Natural-language architecture requests are translated by `GeminiProvider`
+  into Zod-validated `IntentResponse` objects, converted by `@repo/intent`
+  into canonical Architecture Operations, executed atomically through the
+  existing `@repo/executor`, and successfully compiled into Backend IR.
+- Sprint 8: Context-aware AI intent generation with strict Zod validation,
+  automatic retry/recovery (maximum 3 attempts), malformed payload
+  regression handling, server-side Gemini boundary enforcement, AI →
+  IntentAdapter → Executor integration with atomic rollback, UI
+  diagnostics, and presentation-ready MVP checkpoint. Natural-language
+  architecture requests are translated by `GeminiProvider` into Zod-validated
+  `IntentResponse` objects, adapted by `@repo/intent` into canonical
+  Architecture Operations, executed atomically through `@repo/executor`,
+  and compiled into Backend IR.
 
 Implementation status is expected to evolve continuously while the architecture remains stable.
 
@@ -3018,21 +3031,19 @@ Planned:
 The repository currently contains implementation across the following major package groups.
 
 | Package | Status |
-|----------|--------|
+|---------|--------|
 | types | Active Development |
-| operations | Sprint 3 Complete (entity, relation, endpoint) |
-| executor | Sprint 3 Complete (entity, relation, endpoint) |
+| operations | Sprint 3 Complete |
+| executor | Sprint 3 Complete |
 | validation | Sprint 2 Integration Complete |
-| semantic | Implemented (deterministic indexing) |
-| compiler | Sprint 4 Complete (validation + semantic → Backend IR) |
-| plugins | Sprint 4 Complete (NestJS + Prisma generators) |
-| runtime | Sprint 5 Complete (materializer + orchestrator) |
-|ai | Sprint 6 Complete (Gemini provider + verification)
-intent | Sprint 6 Complete (AI → Operations adapter)
-| store | Sprint 2 Integration Complete (entity routes through executor) |
-| ui | Active Development |
-| eslint-config | Tooling |
-| typescript-config | Tooling |
+| semantic | Implemented |
+| compiler | Sprint 4 Complete |
+| plugins | Sprint 4 Complete |
+| runtime | Sprint 5 Complete |
+| ai | Sprint 8 Complete |
+| intent | Sprint 8 Complete |
+| store | Sprint 8 Integrated |
+| ui | Sprint 8 MVP Integration Complete |
 
 Package status reflects implementation maturity rather than code volume.
 
@@ -3055,11 +3066,10 @@ Sprint 2 completed the entity lifecycle execution slice.
 Sprint 3 completed the relation and endpoint lifecycle execution slice.
 Sprint 4 completed the deterministic NestJS generation framework.
 Sprint 5 completed end-to-end materialize-build-start-assert runtime orchestration.
-Sprint 6 introduced the AI intent interpretation package and remains pending verification.
-
-(Sprint 6 = AI subsystem + end-to-end backend integration complete
-
-Sprint 7 = Platform/UI integration of the AI capability)
+Sprint 6 introduced AI intent interpretation and backend integration.
+Sprint 7 integrated the AI capability into the platform/UI surface.
+Sprint 8 completed context-aware AI, retry/recovery, diagnostics integration,
+and established the presentation-ready MVP checkpoint.
 
 Future work should extend this foundation rather than introduce parallel
 mutation paths.

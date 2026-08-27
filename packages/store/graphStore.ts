@@ -161,12 +161,12 @@ export const useGraphStore = create<GraphState>()(
     // --- AI INTENT BOUNDARY ---
     applyIntent: (intent) => {
       let resultPayload: {
-  success: boolean;
-  message?: string;
-  diagnostics?: any[];
-} = {
-  success: false,
-};
+          success: boolean;
+          message?: string;
+          diagnostics?: any[];
+        } = {
+          success: false,
+      };
 
       set((state) => {
         const context = {
@@ -182,19 +182,19 @@ export const useGraphStore = create<GraphState>()(
           state.graph = result.graph; 
           resultPayload = { success: true, message: "Architecture successfully updated." };
         }  else {
-  const diagnostics = result.diagnostics ?? [];
+          const diagnostics = result.diagnostics ?? [];
 
-  const errors = diagnostics
-    .map((d: any) => d?.message)
-    .filter(Boolean)
-    .join(" | ");
+          const errors = diagnostics
+            .map((d: any) => d?.message)
+            .filter(Boolean)
+            .join(" | ");
 
-  resultPayload = {
-    success: false,
-    message: errors || "Intent rejected.",
-    diagnostics,
-  };
-}
+          resultPayload = {
+            success: false,
+            message: errors || "Intent rejected.",
+            diagnostics,
+          };
+        }
       });
 
       return resultPayload;

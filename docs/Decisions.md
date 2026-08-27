@@ -223,3 +223,62 @@ diagnostics, producing atomic intent-level rollback.
 - The architecture remains provider-independent.
 - Future AI providers can implement `AIProvider` without changing the editing
   engine.
+
+# D-010 — AI Model and Graph Store Refinements (Sprint 8)
+
+**Date:** 2026-08-27  
+**Category:** Engineering / Implementation  
+**Status:** Accepted
+
+### Context
+
+Sprint 8 refined the AI intent handling and graph storage implementation:
+
+- `@repo/ai` updated Gemini model from `gemini-3.7-flash` to `gemini-3.6-flash`
+- `@repo/intent` refined deterministic translation of validated intent
+- `@repo/store` graph store continues to expose the canonical
+  `applyIntent` boundary and surfaces executor/intent failures through
+  its existing success/message contract
+- `AIPromptBar` component adapted to new context serialization format
+
+### Decision
+
+The AI model was updated to `gemini-3.6-flash` for improved performance and cost-efficiency.
+
+The `@repo/intent` package refined its deterministic translation to better preserve operation ordering and intermediate state management.
+
+The `@repo/store` graph store continues to expose the canonical
+`applyIntent` boundary and surfaces executor/intent failures through
+its existing success/message contract, maintaining backward
+compatibility without adding a `diagnostics` field to the public API.
+If diagnostics are added to the return type in the future, a new ADR
+(D-011) should document that change rather than amending D-010.
+
+Context serialization in `@repo/ai` was updated to return arrays of entity/field information rather than single objects, ensuring deterministic processing.
+
+### Verification
+
+Sprint 8 implementation was iteratively verified through:
+
+- `@repo/ai` package tests
+- repository-wide test suite
+- workspace type checking
+- Sprint 6 regression verification
+- Sprint 7 verification
+- Sprint 8 AI/context integration verification
+- physical web application verification
+
+The final presentation-ready MVP state was established after resolving
+the Sprint 8 integration and type-contract issues encountered during
+implementation.
+
+If you have a final terminal log showing the exact successful commands,
+we can make this even stronger.
+
+### Consequences
+
+- AI responses may differ slightly due to model change, but remain within expected behavior
+- More detailed diagnostics available for intent failures
+- Context serialization format changed; consumers must update accordingly
+- Backward compatibility maintained for all public interfaces
+- Future AI provider updates can follow the same pattern without architectural changes
