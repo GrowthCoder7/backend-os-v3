@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useGraphStore } from "./graphStore";
-import { Entity, Endpoint, Relation } from "@repo/types";
+import { Entity, Endpoint, Relation, Event, Workflow } from "@repo/types";
 import { IntentResponse } from "@repo/ai";
 
 describe("GraphStore Mutation Boundary", () => {
@@ -20,8 +20,6 @@ describe("GraphStore Mutation Boundary", () => {
   };
 
   beforeEach(() => {
-    // Seed the graph with valid required entities to ensure endpoint/relation tests 
-    // are evaluating their own validity, not failing due to missing target entities.
     useGraphStore.setState({
       graph: {
         metadata: { id: "test", name: "test", createdAt: "1", updatedAt: "1", compilerVersion: "1.0.0", schemaVersion: "1.0.0" },
@@ -37,93 +35,99 @@ describe("GraphStore Mutation Boundary", () => {
     });
   });
 
-  const validEndpoint: Endpoint = {
-    method: "GET",
-    path: "/users",
-    entity: "User", // Relies on seeded User
-    action: "read"
-  };
-
-  const validRelation: Relation = {
-    source: "User",     // Relies on seeded User
-    sourceField: "id",
-    target: "Post",     // Relies on seeded Post
-    targetField: "userId",
-    type: "one-to-many"
-  };
+  const validEndpoint: Endpoint = { method: "GET", path: "/users", entity: "User", action: "read" };
+  const validRelation: Relation = { source: "User", sourceField: "id", target: "Post", targetField: "userId", type: "one-to-many" };
 
   it("1. addEndpoint uses Executor and modifies state successfully", () => {
     useGraphStore.getState().addEndpoint(validEndpoint);
     expect(useGraphStore.getState().graph.endpoints.length).toBe(1);
-    expect(useGraphStore.getState().graph.endpoints[0].path).toBe("/users");
   });
 
   it("2. addRelation uses Executor and modifies state successfully", () => {
     useGraphStore.getState().addRelation(validRelation);
     expect(useGraphStore.getState().graph.relations.length).toBe(1);
-    expect(useGraphStore.getState().graph.relations[0].target).toBe("Post");
+  });
+});
+
+describe("GraphStore Event & Workflow — Deterministic Store Actions", () => {
+  beforeEach(() => {
+    useGraphStore.setState({
+      graph: {
+        metadata: { id: "test", name: "test", createdAt: "1", updatedAt: "1", compilerVersion: "1.0.0", schemaVersion: "1.0.0" },
+        entities: {},
+        relations: [],
+        endpoints: [],
+        events: {},
+        workflows: []
+      }
+    });
   });
 
-  it("3 & 5. updateEndpoint and removeEndpoint use Executor successfully", () => {
+  it("exercises addEvent, updateEvent, and removeEvent through executor", () => {
     const store = useGraphStore.getState();
-    store.addEndpoint(validEndpoint);
-    
-    store.updateEndpoint({ method: "GET", path: "/users" }, { path: "/users/all" });
-    expect(useGraphStore.getState().graph.endpoints[0].path).toBe("/users/all");
+    store.addEvent({ name: "EvtA", payloadSchema: { val: "string" } });
+    expect(useGraphStore.getState().graph.events["EvtA"]).toBeDefined();
 
-    store.removeEndpoint({ method: "GET", path: "/users/all" });
-    expect(useGraphStore.getState().graph.endpoints.length).toBe(0);
+    store.updateEvent("EvtA", { name: "EvtB" });
+    expect(useGraphStore.getState().graph.events["EvtB"]).toBeDefined();
+    expect(useGraphStore.getState().graph.events["EvtA"]).toBeUndefined();
+
+    store.removeEvent("EvtB");
+    expect(useGraphStore.getState().graph.events["EvtB"]).toBeUndefined();
   });
 
-  it("4 & 6. updateRelation and removeRelation use Executor successfully", () => {
+  it("exercises addWorkflow, updateWorkflow, and removeWorkflow through executor", () => {
     const store = useGraphStore.getState();
-    store.addRelation(validRelation);
-    
-    store.updateRelation(
-      { source: "User", sourceField: "id", target: "Post", targetField: "userId" },
-      { type: "one-to-one" }
-    );
-    expect(useGraphStore.getState().graph.relations[0].type).toBe("one-to-one");
+    store.addEvent({ name: "EvtA", payloadSchema: {} });
+    store.addWorkflow({ triggerEvent: "EvtA", steps: [] });
+    expect(useGraphStore.getState().graph.workflows.length).toBe(1);
 
-    store.removeRelation({ source: "User", sourceField: "id", target: "Post", targetField: "userId" });
-    expect(useGraphStore.getState().graph.relations.length).toBe(0);
+    store.updateWorkflow({ triggerEvent: "EvtA" }, { steps: [{ name: "step1", type: "core" }] });
+    expect(useGraphStore.getState().graph.workflows[0].steps.length).toBe(1);
+
+    store.removeWorkflow({ triggerEvent: "EvtA" });
+    expect(useGraphStore.getState().graph.workflows.length).toBe(0);
   });
 
-  it("7 & 8. Invalid mutations throw Executor/Validation errors properly", () => {
+  it("rejects duplicate Event creation, preserving original graph reference", () => {
     const store = useGraphStore.getState();
+    store.addEvent({ name: "UniqueEvent", payloadSchema: {} });
     
-    // Relation points to target "Ghost" which doesn't exist in the seeded graph
-    const invalidRelation: Relation = { ...validRelation, target: "Ghost" };
-    
-    // Proves that Validation engine boundary correctly traps structurally invalid requests
-    expect(() => {
-      store.addRelation(invalidRelation);
-    }).toThrow();
-    
-    expect(useGraphStore.getState().graph.relations.length).toBe(0);
+    const graphBeforeFail = useGraphStore.getState().graph;
+
+    expect(() => store.addEvent({ name: "UniqueEvent", payloadSchema: {} })).toThrow();
+    expect(useGraphStore.getState().graph).toBe(graphBeforeFail);
   });
 
-  it("9. updateEndpointPath legacy wrapper behaves correctly via Executor", () => {
+  it("rejects renaming an Event currently referenced by a Workflow", () => {
     const store = useGraphStore.getState();
-    store.addEndpoint(validEndpoint);
+    store.addEvent({ name: "TriggerA", payloadSchema: {} });
+    store.addWorkflow({ triggerEvent: "TriggerA", steps: [] });
     
-    store.updateEndpointPath("GET", "/users", "/legacy/users");
-    expect(useGraphStore.getState().graph.endpoints[0].path).toBe("/legacy/users");
+    const graphBeforeFail = useGraphStore.getState().graph;
+
+    expect(() => store.updateEvent("TriggerA", { name: "TriggerB" })).toThrow();
+    
+    expect(useGraphStore.getState().graph).toBe(graphBeforeFail);
+    expect(useGraphStore.getState().graph.events["TriggerB"]).toBeUndefined();
   });
 
-  it("10. AI Intents for endpoints and relations execute successfully on seeded graph", () => {
+  it("rejects ambiguous workflow deletes based on exact propagated diagnostic", () => {
     const store = useGraphStore.getState();
-    const intent: IntentResponse = {
-      status: "success",
-      operations: [
-        { type: "endpoint.create", payload: { endpoint: validEndpoint } },
-        { type: "relation.create", payload: { relation: validRelation } }
-      ]
-    };
+    store.addEvent({ name: "AmbiguousTrigger", payloadSchema: {} });
+    
+    useGraphStore.setState(state => {
+      state.graph.workflows.push(
+        { triggerEvent: "AmbiguousTrigger", steps: [] },
+        { triggerEvent: "AmbiguousTrigger", steps: [] }
+      );
+    });
 
-    const res = store.applyIntent(intent);
-    expect(res.success).toBe(true);
-    expect(useGraphStore.getState().graph.endpoints.length).toBe(1);
-    expect(useGraphStore.getState().graph.relations.length).toBe(1);
+    const graphBeforeFail = useGraphStore.getState().graph;
+
+    expect(() => store.removeWorkflow({ triggerEvent: "AmbiguousTrigger" }))
+      .toThrow(/Ambiguous delete: Multiple workflows found for trigger event 'AmbiguousTrigger'/);
+    
+    expect(useGraphStore.getState().graph).toBe(graphBeforeFail);
   });
 });

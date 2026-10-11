@@ -12,19 +12,23 @@ import {
 } from "@repo/types";
 
 import { current } from 'immer';
-import { validateGraph } from '@repo/validation';
+import { validateGraph, ValidationIssue } from '@repo/validation';
 
 import { 
   createEntityOperation, updateEntityOperation, deleteEntityOperation,
   createEndpointOperation, updateEndpointOperation, deleteEndpointOperation,
-  createRelationOperation, updateRelationOperation, deleteRelationOperation
+  createRelationOperation, updateRelationOperation, deleteRelationOperation,
+  createEventOperation, updateEventOperation, deleteEventOperation,
+  createWorkflowOperation, updateWorkflowOperation, deleteWorkflowOperation
 } from "@repo/operations";
 
 import { 
   OperationExecutor, OperationRegistry, 
   EntityCreateHandler, EntityUpdateHandler, EntityDeleteHandler,
   EndpointCreateHandler, EndpointUpdateHandler, EndpointDeleteHandler,
-  RelationCreateHandler, RelationUpdateHandler, RelationDeleteHandler
+  RelationCreateHandler, RelationUpdateHandler, RelationDeleteHandler,
+  EventCreateHandler, EventUpdateHandler, EventDeleteHandler,
+  WorkflowCreateHandler, WorkflowUpdateHandler, WorkflowDeleteHandler
 } from "@repo/executor";
 
 const registry = new OperationRegistry();
@@ -43,6 +47,16 @@ registry.register("endpoint.delete", new EndpointDeleteHandler());
 registry.register("relation.create", new RelationCreateHandler());
 registry.register("relation.update", new RelationUpdateHandler());
 registry.register("relation.delete", new RelationDeleteHandler());
+
+// Event Handlers
+registry.register("event.create", new EventCreateHandler());
+registry.register("event.update", new EventUpdateHandler());
+registry.register("event.delete", new EventDeleteHandler());
+
+// Workflow Handlers
+registry.register("workflow.create", new WorkflowCreateHandler());
+registry.register("workflow.update", new WorkflowUpdateHandler());
+registry.register("workflow.delete", new WorkflowDeleteHandler());
 
 const executor = new OperationExecutor(registry);
 const intentAdapter = new IntentAdapter(executor);
@@ -64,16 +78,20 @@ interface GraphState {
   addEndpoint: (endpoint: Endpoint) => void;
   updateEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }, partialEndpoint: Partial<Endpoint>) => void;
   removeEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }) => void;
-  
-  // Legacy UI Compatibility
   updateEndpointPath: (method: string, oldPath: string, newPath: string) => void;
   
-  // Event & Workflow
+  // Event Mutators
   addEvent: (event: Event) => void;
+  updateEvent: (name: string, partialEvent: Partial<Event>) => void;
+  removeEvent: (name: string) => void;
+
+  // Workflow Mutators
   addWorkflow: (workflow: Workflow) => void;
+  updateWorkflow: (lookup: { triggerEvent: string }, partialWorkflow: Partial<Workflow>) => void;
+  removeWorkflow: (lookup: { triggerEvent: string }) => void;
 
   // AI Intent Boundary
-  applyIntent: (intent: IntentResponse) => { success: boolean, message?: string ,diagnostics?: any[];};
+  applyIntent: (intent: IntentResponse) => { success: boolean; message?: string; diagnostics?: ValidationIssue[] };
 }
 
 const initialGraph: ArchitectureGraph = {
@@ -144,8 +162,6 @@ export const useGraphStore = create<GraphState>()(
     removeEndpoint: (lookup) => set((state) => {
       state.graph = executeOperation(deleteEndpointOperation({ lookup }), current(state.graph));
     }),
-
-    // --- LEGACY UI COMPATIBILITY ---
     updateEndpointPath: (method, oldPath, newPath) => set((state) => {
       const operation = updateEndpointOperation({
         lookup: { method: method as any, path: oldPath },
@@ -154,19 +170,31 @@ export const useGraphStore = create<GraphState>()(
       state.graph = executeOperation(operation, current(state.graph));
     }),
 
-    // --- EVENTS & WORKFLOWS ---
-    addEvent: (event) => set((state) => { state.graph.events[event.name] = event; }),
-    addWorkflow: (workflow) => set((state) => { state.graph.workflows.push(workflow); }),
+    // --- EVENTS ---
+    addEvent: (event) => set((state) => {
+      state.graph = executeOperation(createEventOperation({ event }), current(state.graph));
+    }),
+    updateEvent: (name, partialEvent) => set((state) => {
+      state.graph = executeOperation(updateEventOperation({ name, partialEvent }), current(state.graph));
+    }),
+    removeEvent: (name) => set((state) => {
+      state.graph = executeOperation(deleteEventOperation({ name }), current(state.graph));
+    }),
+
+    // --- WORKFLOWS ---
+    addWorkflow: (workflow) => set((state) => {
+      state.graph = executeOperation(createWorkflowOperation({ workflow }), current(state.graph));
+    }),
+    updateWorkflow: (lookup, partialWorkflow) => set((state) => {
+      state.graph = executeOperation(updateWorkflowOperation({ lookup, partialWorkflow }), current(state.graph));
+    }),
+    removeWorkflow: (lookup) => set((state) => {
+      state.graph = executeOperation(deleteWorkflowOperation({ lookup }), current(state.graph));
+    }),
 
     // --- AI INTENT BOUNDARY ---
     applyIntent: (intent) => {
-      let resultPayload: {
-          success: boolean;
-          message?: string;
-          diagnostics?: any[];
-        } = {
-          success: false,
-      };
+      let resultPayload: { success: boolean; message?: string; diagnostics?: ValidationIssue[] } = { success: false, message: "" };
 
       set((state) => {
         const context = {
@@ -175,25 +203,14 @@ export const useGraphStore = create<GraphState>()(
           validation: { validate: validateGraph }
         };
 
-        // Delegate status and payload processing to IntentAdapter entirely
         const result = intentAdapter.applyIntent(intent, context);
 
         if (result.success) {
           state.graph = result.graph; 
-          resultPayload = { success: true, message: "Architecture successfully updated." };
-        }  else {
-          const diagnostics = result.diagnostics ?? [];
-
-          const errors = diagnostics
-            .map((d: any) => d?.message)
-            .filter(Boolean)
-            .join(" | ");
-
-          resultPayload = {
-            success: false,
-            message: errors || "Intent rejected.",
-            diagnostics,
-          };
+          resultPayload = { success: true, message: "Architecture successfully updated.", diagnostics: [] };
+        } else {
+          const errors = result.diagnostics?.map((d) => d.message).join(" | ") || result.message || "Intent rejected.";
+          resultPayload = { success: false, message: errors, diagnostics: result.diagnostics };
         }
       });
 

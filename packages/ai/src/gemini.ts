@@ -6,7 +6,7 @@ import { AIError } from "./errors";
 import { withRetry } from "./retry";
 import { serializeGraphContext } from "./context";
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -74,7 +74,6 @@ export class GeminiProvider implements AIProvider {
 
         const data = parseResult.data;
 
-        // Status Invariants
         if (data.status === "success" && data.operations.length === 0) {
           throw new AIError("invariant", "Status 'success' requires >= 1 operations.", cleanedText);
         }

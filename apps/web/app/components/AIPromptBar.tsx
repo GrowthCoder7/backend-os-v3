@@ -86,9 +86,9 @@ export function AIPromptBar() {
         setStatus("error");
 
         const diagnosticsMessage = result.diagnostics
-  ?.map((diagnostic) => diagnostic?.message)
-  .filter(Boolean)
-  .join(" | ") || result.message || "Execution rejected by compiler constraints.";
+          ?.map((diagnostic) => diagnostic?.message)
+          .filter(Boolean)
+          .join(" | ") || result.message || "Execution rejected by compiler constraints.";
 
         setFeedback(
           `Execution Failed: ${

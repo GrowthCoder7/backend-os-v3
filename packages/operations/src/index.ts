@@ -18,3 +18,15 @@ export * from "./endpoint/create";
 export * from "./endpoint/update";
 export * from "./endpoint/delete";
 export * from "./factory/endpoint";
+
+// Event Operations
+export * from "./event/create";
+export * from "./event/update";
+export * from "./event/delete";
+export * from "./factory/event";
+
+// Workflow Operations
+export * from "./workflow/create";
+export * from "./workflow/update";
+export * from "./workflow/delete";
+export * from "./factory/workflow";

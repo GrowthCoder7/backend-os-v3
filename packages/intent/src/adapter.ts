@@ -1,28 +1,31 @@
 import { ExecutionContext, OperationExecutor } from "@repo/executor";
 import { ArchitectureGraph } from "@repo/types";
 import { IntentResponse, IntentOperation } from "@repo/ai";
+import { ValidationIssue } from "@repo/validation";
 import { 
   createEntityOperation, updateEntityOperation, deleteEntityOperation,
   createEndpointOperation, updateEndpointOperation, deleteEndpointOperation,
-  createRelationOperation, updateRelationOperation, deleteRelationOperation
+  createRelationOperation, updateRelationOperation, deleteRelationOperation,
+  createEventOperation, updateEventOperation, deleteEventOperation,
+  createWorkflowOperation, updateWorkflowOperation, deleteWorkflowOperation
 } from "@repo/operations";
 
 export interface IntentExecutionResult {
   success: boolean;
   graph: ArchitectureGraph;
-  diagnostics: any[]; 
+  diagnostics: ValidationIssue[];
+  message?: string;
 }
 
 export class IntentAdapter {
   constructor(private executor: OperationExecutor) {}
 
   public applyIntent(intent: IntentResponse, context: ExecutionContext): IntentExecutionResult {
-    // 1. Status & Precondition Checks
     if (intent.status === "needs_clarification" || intent.status === "error") {
       if (intent.operations && intent.operations.length > 0) {
         throw new Error(`Contradictory AI intent: status is '${intent.status}' but operations were provided.`);
       }
-      return { success: false, graph: context.graph, diagnostics: [{ type: "system", message: intent.message || intent.status }] };
+      return { success: false, graph: context.graph, diagnostics: [], message: intent.message || intent.status };
     }
 
     if (intent.status !== "success") {
@@ -33,7 +36,6 @@ export class IntentAdapter {
       throw new Error("AI intent success requires at least one operation.");
     }
 
-    // 2. Map to Canonical Operations (Preserving EXACT AI Order)
     const canonicalOperations = intent.operations.map((op: IntentOperation) => {
       const metadata = { source: "ai" as const };
       
@@ -47,14 +49,18 @@ export class IntentAdapter {
         case "relation.create": return createRelationOperation(op.payload, metadata);
         case "relation.update": return updateRelationOperation(op.payload, metadata);
         case "relation.delete": return deleteRelationOperation(op.payload, metadata);
+        case "event.create": return createEventOperation(op.payload, metadata);
+        case "event.update": return updateEventOperation(op.payload, metadata);
+        case "event.delete": return deleteEventOperation(op.payload, metadata);
+        case "workflow.create": return createWorkflowOperation(op.payload, metadata);
+        case "workflow.update": return updateWorkflowOperation(op.payload, metadata);
+        case "workflow.delete": return deleteWorkflowOperation(op.payload, metadata);
         default: 
-          // TypeScript exhaustive check protection
           const _exhaustiveCheck: never = op;
           throw new Error(`Unknown IntentOperation type encountered: ${(op as any).type}`);
       }
     });
 
-    // 3. Atomic Commit Execution
     const originalGraph = context.graph;
     let currentGraph = originalGraph;
 
@@ -65,21 +71,11 @@ export class IntentAdapter {
       });
 
       if (!result.success) {
-        // Rollback immediately to original graph. Do not commit intermediate state.
-        return {
-          success: false,
-          graph: originalGraph,
-          diagnostics: result.diagnostics
-        };
+        return { success: false, graph: originalGraph, diagnostics: result.diagnostics };
       }
-
       currentGraph = result.graph;
     }
 
-    return {
-      success: true,
-      graph: currentGraph,
-      diagnostics: []
-    };
+    return { success: true, graph: currentGraph, diagnostics: [] };
   }
 }

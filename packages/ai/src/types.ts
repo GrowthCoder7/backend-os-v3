@@ -1,20 +1,15 @@
+import { ArchitectureGraph } from "@repo/types";
 import {
-  CreateEntityPayload,
-  UpdateEntityPayload,
-  DeleteEntityPayload,
-  CreateEndpointPayload,
-  UpdateEndpointPayload,
-  DeleteEndpointPayload,
-  CreateRelationPayload,
-  UpdateRelationPayload,
-  DeleteRelationPayload,
+  CreateEntityPayload, UpdateEntityPayload, DeleteEntityPayload,
+  CreateEndpointPayload, UpdateEndpointPayload, DeleteEndpointPayload,
+  CreateRelationPayload, UpdateRelationPayload, DeleteRelationPayload,
+  CreateEventPayload, UpdateEventPayload, DeleteEventPayload,
+  CreateWorkflowPayload, UpdateWorkflowPayload, DeleteWorkflowPayload
 } from "@repo/operations";
-
-import {ArchitectureGraph} from "@repo/types"
 
 export interface IntentRequest {
   prompt: string;
-  graph:ArchitectureGraph;
+  graph: ArchitectureGraph;
 }
 
 export type IntentOperation =
@@ -26,7 +21,13 @@ export type IntentOperation =
   | { type: "endpoint.delete"; payload: DeleteEndpointPayload }
   | { type: "relation.create"; payload: CreateRelationPayload }
   | { type: "relation.update"; payload: UpdateRelationPayload }
-  | { type: "relation.delete"; payload: DeleteRelationPayload };
+  | { type: "relation.delete"; payload: DeleteRelationPayload }
+  | { type: "event.create"; payload: CreateEventPayload }
+  | { type: "event.update"; payload: UpdateEventPayload }
+  | { type: "event.delete"; payload: DeleteEventPayload }
+  | { type: "workflow.create"; payload: CreateWorkflowPayload }
+  | { type: "workflow.update"; payload: UpdateWorkflowPayload }
+  | { type: "workflow.delete"; payload: DeleteWorkflowPayload };
 
 export interface IntentResponse {
   status: "success" | "needs_clarification" | "error";
