@@ -19,7 +19,8 @@ import {
   createEndpointOperation, updateEndpointOperation, deleteEndpointOperation,
   createRelationOperation, updateRelationOperation, deleteRelationOperation,
   createEventOperation, updateEventOperation, deleteEventOperation,
-  createWorkflowOperation, updateWorkflowOperation, deleteWorkflowOperation
+  createWorkflowOperation, updateWorkflowOperation, deleteWorkflowOperation,
+  ArchitectureOperation
 } from "@repo/operations";
 
 import { 
@@ -31,68 +32,31 @@ import {
   WorkflowCreateHandler, WorkflowUpdateHandler, WorkflowDeleteHandler
 } from "@repo/executor";
 
-const registry = new OperationRegistry();
+import { HistoryEngine, cloneGraph } from "./src/history";
 
-// Entity Handlers
+const registry = new OperationRegistry();
 registry.register("entity.create", new EntityCreateHandler());
 registry.register("entity.update", new EntityUpdateHandler());
 registry.register("entity.delete", new EntityDeleteHandler());
 
-// Endpoint Handlers
 registry.register("endpoint.create", new EndpointCreateHandler());
 registry.register("endpoint.update", new EndpointUpdateHandler());
 registry.register("endpoint.delete", new EndpointDeleteHandler());
 
-// Relation Handlers
 registry.register("relation.create", new RelationCreateHandler());
 registry.register("relation.update", new RelationUpdateHandler());
 registry.register("relation.delete", new RelationDeleteHandler());
 
-// Event Handlers
 registry.register("event.create", new EventCreateHandler());
 registry.register("event.update", new EventUpdateHandler());
 registry.register("event.delete", new EventDeleteHandler());
 
-// Workflow Handlers
 registry.register("workflow.create", new WorkflowCreateHandler());
 registry.register("workflow.update", new WorkflowUpdateHandler());
 registry.register("workflow.delete", new WorkflowDeleteHandler());
 
 const executor = new OperationExecutor(registry);
 const intentAdapter = new IntentAdapter(executor);
-
-interface GraphState {
-  graph: ArchitectureGraph;
-  
-  // Entity Mutators
-  addEntity: (entity: Entity) => void;
-  updateEntity: (name: string, partialEntity: Partial<Entity>) => void;
-  removeEntity: (name: string) => void;
-  
-  // Relation Mutators
-  addRelation: (relation: Relation) => void;
-  updateRelation: (lookup: { source: string; sourceField: string; target: string; targetField: string }, partialRelation: Partial<Relation>) => void;
-  removeRelation: (lookup: { source: string; sourceField: string; target: string; targetField: string }) => void;
-  
-  // Endpoint Mutators
-  addEndpoint: (endpoint: Endpoint) => void;
-  updateEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }, partialEndpoint: Partial<Endpoint>) => void;
-  removeEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }) => void;
-  updateEndpointPath: (method: string, oldPath: string, newPath: string) => void;
-  
-  // Event Mutators
-  addEvent: (event: Event) => void;
-  updateEvent: (name: string, partialEvent: Partial<Event>) => void;
-  removeEvent: (name: string) => void;
-
-  // Workflow Mutators
-  addWorkflow: (workflow: Workflow) => void;
-  updateWorkflow: (lookup: { triggerEvent: string }, partialWorkflow: Partial<Workflow>) => void;
-  removeWorkflow: (lookup: { triggerEvent: string }) => void;
-
-  // AI Intent Boundary
-  applyIntent: (intent: IntentResponse) => { success: boolean; message?: string; diagnostics?: ValidationIssue[] };
-}
 
 const initialGraph: ArchitectureGraph = {
   metadata: {
@@ -110,7 +74,73 @@ const initialGraph: ArchitectureGraph = {
   workflows: [],
 };
 
-const executeOperation = (operation: any, graph: ArchitectureGraph) => {
+// Strict initialization order: initialGraph is declared prior to HistoryEngine instantiation
+let historyEngine = new HistoryEngine(initialGraph);
+
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)){
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const keysA = Object.keys(a as Record<string, unknown>);
+  const keysB = Object.keys(b as Record<string, unknown>);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA){
+    if (!Object.prototype.hasOwnProperty.call(b, key) || !deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export interface GraphState {
+  graph: ArchitectureGraph;
+  
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+  resetGraph: (graph: ArchitectureGraph) => void;
+
+  addEntity: (entity: Entity) => void;
+  updateEntity: (name: string, partialEntity: Partial<Entity>) => void;
+  removeEntity: (name: string) => void;
+  
+  addRelation: (relation: Relation) => void;
+  updateRelation: (lookup: { source: string; sourceField: string; target: string; targetField: string }, partialRelation: Partial<Relation>) => void;
+  removeRelation: (lookup: { source: string; sourceField: string; target: string; targetField: string }) => void;
+  
+  addEndpoint: (endpoint: Endpoint) => void;
+  updateEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }, partialEndpoint: Partial<Endpoint>) => void;
+  removeEndpoint: (lookup: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string }) => void;
+  updateEndpointPath: (method: "GET" | "POST" | "PUT" | "DELETE", oldPath: string, newPath: string) => void;
+  
+  addEvent: (event: Event) => void;
+  updateEvent: (name: string, partialEvent: Partial<Event>) => void;
+  removeEvent: (name: string) => void;
+
+  addWorkflow: (workflow: Workflow) => void;
+  updateWorkflow: (lookup: { triggerEvent: string }, partialWorkflow: Partial<Workflow>) => void;
+  removeWorkflow: (lookup: { triggerEvent: string }) => void;
+
+  applyIntent: (intent: IntentResponse) => { success: boolean; message?: string; diagnostics?: ValidationIssue[] };
+}
+
+const commitGraph = (state: GraphState, newGraph: ArchitectureGraph) => {
+  if (deepEqual(current(state.graph), newGraph)) return;
+  historyEngine.record(newGraph);
+  state.graph = newGraph;
+  state.canUndo = historyEngine.canUndo();
+  state.canRedo = historyEngine.canRedo();
+};
+
+const executeOperation = (operation: ArchitectureOperation<string, unknown>, graph: ArchitectureGraph): ArchitectureGraph => {
   const context = {
     graph,
     services: {},
@@ -119,8 +149,8 @@ const executeOperation = (operation: any, graph: ArchitectureGraph) => {
   const result = executor.execute(operation, context);
   if (!result.success) {
     const errors = result.diagnostics
-      ?.filter((d: any) => d.severity === "error")
-      .map((d: any) => d.message).join(" | ");
+      ?.filter((d: ValidationIssue) => d.severity === "error")
+      .map((d: ValidationIssue) => d.message).join(" | ");
     throw new Error(errors || "Operation failed validation.");
   }
   return result.graph;
@@ -129,67 +159,107 @@ const executeOperation = (operation: any, graph: ArchitectureGraph) => {
 export const useGraphStore = create<GraphState>()(
   immer((set) => ({
     graph: initialGraph,
+    canUndo: historyEngine.canUndo(),
+    canRedo: historyEngine.canRedo(),
+
+    undo: () => set((state) => {
+      if (historyEngine.canUndo()) {
+        state.graph = historyEngine.undo();
+        state.canUndo = historyEngine.canUndo();
+        state.canRedo = historyEngine.canRedo();
+      }
+    }),
+    redo: () => set((state) => {
+      if (historyEngine.canRedo()) {
+        state.graph = historyEngine.redo();
+        state.canUndo = historyEngine.canUndo();
+        state.canRedo = historyEngine.canRedo();
+      }
+    }),
+    resetGraph: (newGraph) => set((state) => {
+      const cloned = cloneGraph(newGraph);
+      historyEngine.reset(cloned);
+      state.graph = cloned;
+      state.canUndo = historyEngine.canUndo();
+      state.canRedo = historyEngine.canRedo();
+    }),
 
     // --- ENTITIES ---
     addEntity: (entity) => set((state) => {
-      state.graph = executeOperation(createEntityOperation({ entity }), current(state.graph));
+      const newGraph = executeOperation(createEntityOperation({ entity }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     updateEntity: (name, partialEntity) => set((state) => {
-      state.graph = executeOperation(updateEntityOperation({ name, partialEntity }), current(state.graph));
+      const newGraph = executeOperation(updateEntityOperation({ name, partialEntity }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     removeEntity: (name) => set((state) => {
-      state.graph = executeOperation(deleteEntityOperation({ name }), current(state.graph));
+      const newGraph = executeOperation(deleteEntityOperation({ name }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
 
     // --- RELATIONS ---
     addRelation: (relation) => set((state) => {
-      state.graph = executeOperation(createRelationOperation({ relation }), current(state.graph));
+      const newGraph = executeOperation(createRelationOperation({ relation }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     updateRelation: (lookup, partialRelation) => set((state) => {
-      state.graph = executeOperation(updateRelationOperation({ lookup, partialRelation }), current(state.graph));
+      const newGraph = executeOperation(updateRelationOperation({ lookup, partialRelation }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     removeRelation: (lookup) => set((state) => {
-      state.graph = executeOperation(deleteRelationOperation({ lookup }), current(state.graph));
+      const newGraph = executeOperation(deleteRelationOperation({ lookup }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
 
     // --- ENDPOINTS ---
     addEndpoint: (endpoint) => set((state) => {
-      state.graph = executeOperation(createEndpointOperation({ endpoint }), current(state.graph));
+      const newGraph = executeOperation(createEndpointOperation({ endpoint }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     updateEndpoint: (lookup, partialEndpoint) => set((state) => {
-      state.graph = executeOperation(updateEndpointOperation({ lookup, partialEndpoint }), current(state.graph));
+      const newGraph = executeOperation(updateEndpointOperation({ lookup, partialEndpoint }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     removeEndpoint: (lookup) => set((state) => {
-      state.graph = executeOperation(deleteEndpointOperation({ lookup }), current(state.graph));
+      const newGraph = executeOperation(deleteEndpointOperation({ lookup }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     updateEndpointPath: (method, oldPath, newPath) => set((state) => {
       const operation = updateEndpointOperation({
-        lookup: { method: method as any, path: oldPath },
+        lookup: { method, path: oldPath },
         partialEndpoint: { path: newPath }
       });
-      state.graph = executeOperation(operation, current(state.graph));
+      const newGraph = executeOperation(operation, current(state.graph));
+      commitGraph(state, newGraph);
     }),
 
     // --- EVENTS ---
     addEvent: (event) => set((state) => {
-      state.graph = executeOperation(createEventOperation({ event }), current(state.graph));
+      const newGraph = executeOperation(createEventOperation({ event }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     updateEvent: (name, partialEvent) => set((state) => {
-      state.graph = executeOperation(updateEventOperation({ name, partialEvent }), current(state.graph));
+      const newGraph = executeOperation(updateEventOperation({ name, partialEvent }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     removeEvent: (name) => set((state) => {
-      state.graph = executeOperation(deleteEventOperation({ name }), current(state.graph));
+      const newGraph = executeOperation(deleteEventOperation({ name }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
 
     // --- WORKFLOWS ---
     addWorkflow: (workflow) => set((state) => {
-      state.graph = executeOperation(createWorkflowOperation({ workflow }), current(state.graph));
+      const newGraph = executeOperation(createWorkflowOperation({ workflow }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     updateWorkflow: (lookup, partialWorkflow) => set((state) => {
-      state.graph = executeOperation(updateWorkflowOperation({ lookup, partialWorkflow }), current(state.graph));
+      const newGraph = executeOperation(updateWorkflowOperation({ lookup, partialWorkflow }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
     removeWorkflow: (lookup) => set((state) => {
-      state.graph = executeOperation(deleteWorkflowOperation({ lookup }), current(state.graph));
+      const newGraph = executeOperation(deleteWorkflowOperation({ lookup }), current(state.graph));
+      commitGraph(state, newGraph);
     }),
 
     // --- AI INTENT BOUNDARY ---
@@ -206,7 +276,7 @@ export const useGraphStore = create<GraphState>()(
         const result = intentAdapter.applyIntent(intent, context);
 
         if (result.success) {
-          state.graph = result.graph; 
+          commitGraph(state, result.graph);
           resultPayload = { success: true, message: "Architecture successfully updated.", diagnostics: [] };
         } else {
           const errors = result.diagnostics?.map((d) => d.message).join(" | ") || result.message || "Intent rejected.";
