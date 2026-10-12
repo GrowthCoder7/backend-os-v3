@@ -1,21 +1,34 @@
 import { ArchitectureGraph } from "@repo/types";
 
+// Helper to safely and deeply sort object keys for deterministic serialization
+// Preserves array order natively, applying type-safe recursion for nested records.
+function deepSortObject(obj: unknown): unknown {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(deepSortObject);
+  
+  const record = obj as Record<string, unknown>;
+  const sorted: Record<string, unknown> = {};
+  Object.keys(record).sort().forEach(key => {
+    sorted[key] = deepSortObject(record[key]);
+  });
+  return sorted;
+}
+
 export function serializeGraphContext(graph: ArchitectureGraph): string {
   // Deterministic serialization of read-only architecture state
-  const entities = Object.keys(graph.entities)
-    .sort()
-    .flatMap((name) => {
-      const e = graph.entities[name];
-      
-      // Explicit undefined guard for strict mode (noUncheckedIndexedAccess)
-      if (!e) return [];
+  const entities = Object.entries(graph.entities)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([name, e]) => {
+    const fields = [...e.fields]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((f) => ({
+        name: f.name,
+        type: f.type,
+        required: f.required,
+      }));
 
-      const fields = [...e.fields]
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((f) => ({ name: f.name, type: f.type, required: f.required }));
-        
-      return [{ name: e.name, primaryKey: e.primaryKey, fields }];
-    });
+    return { name: e.name, primaryKey: e.primaryKey, fields };
+  });
 
   const relations = [...graph.relations].sort(
     (a, b) =>
@@ -29,5 +42,31 @@ export function serializeGraphContext(graph: ArchitectureGraph): string {
     (a, b) => a.method.localeCompare(b.method) || a.path.localeCompare(b.path)
   );
 
-  return JSON.stringify({ entities, relations, endpoints }, null, 2);
+  // Deterministic Event serialization
+  const events = Object.entries(graph.events)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, e]) => {
+    const payloadSchema = Object.fromEntries(
+      Object.entries(e.payloadSchema).sort(([a], [b]) =>
+        a.localeCompare(b)
+      )
+    );
+
+    return { name: e.name, payloadSchema };
+  });
+
+  // Deterministic Workflow serialization
+  const workflows = [...graph.workflows]
+    .sort((a, b) => a.triggerEvent.localeCompare(b.triggerEvent))
+    .map((w) => ({
+      triggerEvent: w.triggerEvent,
+      // Pipeline step order is intentionally preserved
+      steps: w.steps.map((s) => ({
+        name: s.name,
+        type: s.type,
+        config: s.config !== undefined ? (deepSortObject(s.config) as Record<string, unknown>) : undefined
+      }))
+    }));
+
+  return JSON.stringify({ entities, relations, endpoints, events, workflows }, null, 2);
 }
