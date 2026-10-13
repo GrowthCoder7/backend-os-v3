@@ -1,12 +1,15 @@
+import React from "react";
 import { EntityBuilder } from "./components/EntityBuilder";
+import { RelationBuilder } from "./components/builders/RelationBuilder";
+import { EndpointBuilder } from "./components/builders/EndpointBuilder";
+import { EventBuilder } from "./components/builders/EventBuilder";
+import { WorkflowBuilder } from "./components/builders/WorkflowBuilder";
 import { CompilerPreview } from "./components/CompilerPreview";
 import { AIPromptBar } from "./components/AIPromptBar";
 
 export default function Home() {
   return (
     <main style={{ display: "flex", height: "100vh", width: "100vw", backgroundColor: "#f3f4f6", overflow: "hidden", fontFamily: "sans-serif" }}>
-      
-      {/* Left Pane: Intent & Manual Builder UI */}
       <section style={{ width: "50%", height: "100%", borderRight: "1px solid #e5e7eb", overflowY: "auto", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "2rem", flex: 1 }}>
           <header style={{ marginBottom: "2rem" }}>
@@ -23,16 +26,33 @@ export default function Home() {
               <div style={{ flex: 1, height: "1px", background: "#e5e7eb" }}></div>
             </div>
 
-            <EntityBuilder />
+            <details style={{ marginBottom: "0.5rem" }} open>
+              <summary style={{ cursor: "pointer", fontWeight: "600", marginBottom: "0.5rem", color: "#374151" }}>Entity Builder</summary>
+              <EntityBuilder />
+            </details>
+            <details style={{ marginBottom: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontWeight: "600", marginBottom: "0.5rem", color: "#374151" }}>Relation Builder</summary>
+              <RelationBuilder />
+            </details>
+            <details style={{ marginBottom: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontWeight: "600", marginBottom: "0.5rem", color: "#374151" }}>Endpoint Builder</summary>
+              <EndpointBuilder />
+            </details>
+            <details style={{ marginBottom: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontWeight: "600", marginBottom: "0.5rem", color: "#374151" }}>Event Builder</summary>
+              <EventBuilder />
+            </details>
+            <details style={{ marginBottom: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontWeight: "600", marginBottom: "0.5rem", color: "#374151" }}>Workflow Builder</summary>
+              <WorkflowBuilder />
+            </details>
           </div>
         </div>
       </section>
 
-      {/* Right Pane: Compiler Pipeline / Debugger */}
       <section style={{ width: "50%", height: "100%", backgroundColor: "#1e1e1e" }}>
         <CompilerPreview />
       </section>
-
     </main>
   );
 }
