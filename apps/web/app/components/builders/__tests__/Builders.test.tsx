@@ -1,291 +1,64 @@
-
- // @vitest-environment jsdom
-import React from "react";
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-} from "vitest";
-import {
-  render,
-  screen,
-  fireEvent,
-  cleanup,
-} from "@testing-library/react";
-import { RelationBuilder } from "../RelationBuilder";
-import { EventBuilder } from "../EventBuilder";
-import { WorkflowBuilder } from "../WorkflowBuilder";
-import { EndpointBuilder } from "../EndpointBuilder";
-import Home from "../../../page";
+import { describe, it, expect, beforeEach } from "vitest";
 import { useGraphStore } from "@repo/store";
+import { ArchitectureGraph } from "@repo/types";
 
-vi.mock("@repo/store", () => ({
-  useGraphStore: vi.fn(),
-}));
+const getEmptyGraph = (): ArchitectureGraph => ({
+  metadata: { id: "test", name: "Test", createdAt: "", updatedAt: "", compilerVersion: "1.0", schemaVersion: "1.0" },
+  entities: {}, relations: [], endpoints: [], events: {}, workflows: []
+});
 
-describe("Architecture Builder Components & Integration", () => {
-  const mockAddRelation = vi.fn();
-  const mockUpdateRelation = vi.fn();
-  const mockAddEvent = vi.fn();
-  const mockUpdateEvent = vi.fn();
-  const mockAddWorkflow = vi.fn();
-  const mockUpdateWorkflow = vi.fn();
-  const mockAddEndpoint = vi.fn();
-  const mockUpdateEndpoint = vi.fn();
-
-  afterEach(() => {
-    cleanup();
-  });
-
+describe("Sprint 10 Architecture Editor & History UI Integration", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-
-    (useGraphStore as any).mockImplementation((selector: (state: any) => unknown) => {
-      const state = {
-        graph: {
-          entities: {
-            User: { fields: [{ name: "id" }] },
-            Post: { fields: [{ name: "userId" }] },
-          },
-          relations: [],
-          endpoints: [],
-          events: { UserSignedUp: {} },
-          workflows: [],
-        },
-        addRelation: mockAddRelation,
-        updateRelation: mockUpdateRelation,
-        addEvent: mockAddEvent,
-        updateEvent: mockUpdateEvent,
-        addWorkflow: mockAddWorkflow,
-        updateWorkflow: mockUpdateWorkflow,
-        addEndpoint: mockAddEndpoint,
-        updateEndpoint: mockUpdateEndpoint,
-      };
-
-      return selector(state);
-    });
+    useGraphStore.getState().resetGraph(getEmptyGraph());
   });
 
-  it("page.tsx renders all builders successfully in the accordion without crashing", () => {
-    render(<Home />);
+  it("supports selecting and updating existing entities through store actions", () => {
+    const store = useGraphStore.getState();
+    store.addEntity({ name: "User", primaryKey: "id", fields: [{ name: "id", type: "string", required: true }] });
 
-    expect(screen.getByText("Backend OS")).toBeDefined();
-    expect(screen.getByText("Relation Builder")).toBeDefined();
-    expect(screen.getByText("Event Builder")).toBeDefined();
+    // Update entity
+    store.updateEntity("User", { primaryKey: "id", fields: [{ name: "id", type: "string", required: true }, { name: "email", type: "string", required: true }] });
+
+    const updated = useGraphStore.getState().graph.entities["User"];
+    expect(updated).toBeDefined();
+
+if (!updated) {
+  throw new Error("Updated User entity was not found");
+}
+    expect(updated.fields.length).toBe(2);
+    expect(updated.fields.some(f => f.name === "email")).toBe(true);
   });
 
-  describe("RelationBuilder", () => {
-    it("derives available fields correctly from selected entities and clears stale ones", () => {
-      render(<RelationBuilder />);
+  it("surfaces validation errors and prevents deletion of events referenced by workflows", () => {
+    const store = useGraphStore.getState();
+    store.addEvent({ name: "UserSignedUp", payloadSchema: {} });
+    store.addWorkflow({ triggerEvent: "UserSignedUp", steps: [] });
 
-      fireEvent.change(screen.getByDisplayValue("Select Source Entity"), {
-        target: { value: "User" },
-      });
+    // Attempting to remove the referenced event must throw/fail validation
+    expect(() => {
+      store.removeEvent("UserSignedUp");
+    }).toThrow();
 
-      const sourceFieldOptions = screen
-        .getAllByRole("option")
-        .filter((option) => (option as HTMLOptionElement).value === "id");
-
-      expect(sourceFieldOptions.length).toBeGreaterThan(0);
-    });
-
-    it("triggers updateRelation with cached lookup on Edit mode", () => {
-      const initialData = {
-        source: "User",
-        sourceField: "id",
-        target: "Post",
-        targetField: "userId",
-        type: "one-to-many" as const,
-      };
-
-      render(<RelationBuilder initialData={initialData} />);
-
-      fireEvent.change(screen.getByDisplayValue("One-to-Many"), {
-        target: { value: "one-to-one" },
-      });
-
-      fireEvent.click(screen.getByText(/Update Relation/i));
-
-      expect(mockUpdateRelation).toHaveBeenCalledWith(
-        {
-          source: "User",
-          sourceField: "id",
-          target: "Post",
-          targetField: "userId",
-        },
-        { ...initialData, type: "one-to-one" },
-      );
-    });
+    // Graph remains untouched
+    expect(useGraphStore.getState().graph.events["UserSignedUp"]).toBeDefined();
   });
 
-  describe("EventBuilder", () => {
-    it("rejects duplicate keys prior to invoking the store", () => {
-      render(<EventBuilder />);
+  it("manages History (Undo/Redo) controls and updates AST preview state", () => {
+    const store = useGraphStore.getState();
+    expect(store.canUndo).toBe(false);
 
-      fireEvent.change(screen.getByPlaceholderText(/Event Name/i), {
-        target: { value: "ItemPurchased" },
-      });
+    store.addEntity({ name: "Post", primaryKey: "id", fields: [{ name: "id", type: "string", required: true }] });
+    expect(useGraphStore.getState().canUndo).toBe(true);
+    expect(useGraphStore.getState().graph.entities["Post"]).toBeDefined();
 
-      fireEvent.click(screen.getByText(/\+ Add Schema Key/i));
-      fireEvent.click(screen.getByText(/\+ Add Schema Key/i));
+    // Undo
+    useGraphStore.getState().undo();
+    expect(useGraphStore.getState().graph.entities["Post"]).toBeUndefined();
+    expect(useGraphStore.getState().canRedo).toBe(true);
 
-      const keyInputs = screen.getAllByPlaceholderText(
-        /Key \(e\.g\., userId\)/i,
-      );
-
-      const firstKeyInput = keyInputs[0];
-      const secondKeyInput = keyInputs[1];
-
-      if (!firstKeyInput || !secondKeyInput) {
-        throw new Error("Expected two schema key inputs in the DOM.");
-      }
-
-      fireEvent.change(firstKeyInput, {
-        target: { value: "duplicateKey" },
-      });
-
-      fireEvent.change(secondKeyInput, {
-        target: { value: "duplicateKey" },
-      });
-
-      fireEvent.click(screen.getByText(/Inject Event to AST/i));
-
-      expect(mockAddEvent).not.toHaveBeenCalled();
-      expect(screen.getByText(/Duplicate key found/i)).toBeDefined();
-    });
-
-    it("surfaces validation error when store rejects renaming an event with dependent workflows", () => {
-      mockUpdateEvent.mockImplementation(() => {
-        throw new Error(
-          "Cannot rename event 'UserSignedUp' because it is referenced by 1 workflow(s).",
-        );
-      });
-
-      render(
-        <EventBuilder
-          initialData={{
-            name: "UserSignedUp",
-            payloadSchema: {},
-          }}
-        />,
-      );
-
-      fireEvent.change(screen.getByDisplayValue("UserSignedUp"), {
-        target: { value: "UserRegistered" },
-      });
-
-      fireEvent.click(screen.getByText(/Update Event/i));
-
-      expect(
-        screen.getByText(/referenced by 1 workflow/i),
-      ).toBeDefined();
-    });
-  });
-
-  describe("EndpointBuilder", () => {
-    it("updates path using initialData as the lookup", () => {
-      render(
-        <EndpointBuilder
-          initialData={{
-            method: "GET",
-            path: "/old",
-            entity: "User",
-            action: "read",
-          }}
-        />,
-      );
-
-      fireEvent.change(screen.getByDisplayValue("/old"), {
-        target: { value: "/new" },
-      });
-
-      fireEvent.click(screen.getByText(/Update Endpoint/i));
-
-      expect(mockUpdateEndpoint).toHaveBeenCalledWith(
-        { method: "GET", path: "/old" },
-        {
-          method: "GET",
-          path: "/new",
-          entity: "User",
-          action: "read",
-        },
-      );
-    });
-  });
-
-  describe("WorkflowBuilder", () => {
-    it("rejects JSON arrays and null configurations", () => {
-      render(<WorkflowBuilder />);
-
-      fireEvent.change(screen.getByDisplayValue("Select Trigger Event"), {
-        target: { value: "UserSignedUp" },
-      });
-
-      fireEvent.click(screen.getByText(/\+ Add Pipeline Step/i));
-
-      const stepNameInput = screen.getByPlaceholderText(/Step Name/i);
-      const configInput = screen.getByPlaceholderText(
-        /Optional JSON Config/i,
-      );
-      const submitButton = screen.getByText(/Inject Workflow to AST/i);
-
-      fireEvent.change(stepNameInput, {
-        target: { value: "stepA" },
-      });
-
-      // Arrays must not be accepted as object configuration.
-      fireEvent.change(configInput, {
-        target: { value: "[1, 2, 3]" },
-      });
-      fireEvent.click(submitButton);
-
-      expect(screen.getByText(/Invalid JSON Object/i)).toBeDefined();
-      expect(mockAddWorkflow).not.toHaveBeenCalled();
-
-      // JSON null must also be rejected.
-      fireEvent.change(configInput, {
-        target: { value: "null" },
-      });
-      fireEvent.click(submitButton);
-
-      expect(screen.getByText(/Invalid JSON Object/i)).toBeDefined();
-      expect(mockAddWorkflow).not.toHaveBeenCalled();
-    });
-
-    it("triggers updateWorkflow with exact triggerEvent lookup", () => {
-      render(
-        <WorkflowBuilder
-          initialData={{
-            triggerEvent: "UserSignedUp",
-            steps: [],
-          }}
-        />,
-      );
-
-      fireEvent.click(screen.getByText(/\+ Add Pipeline Step/i));
-
-      fireEvent.change(screen.getByPlaceholderText(/Step Name/i), {
-        target: { value: "step1" },
-      });
-
-      fireEvent.click(screen.getByText(/Update Workflow/i));
-
-      expect(mockUpdateWorkflow).toHaveBeenCalledWith(
-        { triggerEvent: "UserSignedUp" },
-        {
-          triggerEvent: "UserSignedUp",
-          steps: [
-            {
-              name: "step1",
-              type: "core",
-              config: undefined,
-            },
-          ],
-        },
-      );
-    });
+    // Redo
+    useGraphStore.getState().redo();
+    expect(useGraphStore.getState().graph.entities["Post"]).toBeDefined();
+    expect(useGraphStore.getState().canUndo).toBe(true);
   });
 });

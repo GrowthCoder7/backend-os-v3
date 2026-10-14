@@ -1,18 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGraphStore } from "@repo/store";
 import { validateGraph } from "@repo/validation";
 import { ArchitectureGraph, Entity, Field, FieldType } from "@repo/types";
 
-export function EntityBuilder() {
+export function EntityBuilder({ initialData, onClose }: { initialData?: Entity; onClose?: () => void }) {
+  const isEdit = !!initialData;
   const addEntity = useGraphStore((state) => state.addEntity);
+  const updateEntity = useGraphStore((state) => state.updateEntity);
   const currentGraph = useGraphStore((state) => state.graph);
 
-  const [name, setName] = useState("");
-  const [primaryKey, setPrimaryKey] = useState("id");
-  const [fields, setFields] = useState<Field[]>([{ name: "id", type: "string", required: true }]);
+  const [name, setName] = useState(initialData?.name || "");
+  const [primaryKey, setPrimaryKey] = useState(initialData?.primaryKey || "id");
+  const [fields, setFields] = useState<Field[]>(initialData?.fields || [{ name: "id", type: "string", required: true }]);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name);
+      setPrimaryKey(initialData.primaryKey);
+      setFields(initialData.fields);
+    } else {
+      setName("");
+      setPrimaryKey("id");
+      setFields([{ name: "id", type: "string", required: true }]);
+    }
+  }, [initialData]);
 
   const handleAddField = () => setFields([...fields, { name: "", type: "string", required: false }]);
   const handleUpdateField = (index: number, key: keyof Field, value: string | boolean) => {
@@ -22,14 +36,17 @@ export function EntityBuilder() {
   };
   const handleRemoveField = (index: number) => setFields(fields.filter((_, i) => i !== index));
 
-  const handleCreate = () => {
+  const handleSave = () => {
     const cleanName = name.trim();
     const cleanFields = fields.filter((f) => f.name.trim() !== "");
 
     if (!cleanName) { setError("Entity name is required."); return; }
 
     const newEntity: Entity = { name: cleanName, primaryKey: primaryKey.trim(), fields: cleanFields };
-    const provisionalGraph: ArchitectureGraph = { ...currentGraph, entities: { ...currentGraph.entities, [cleanName]: newEntity } };
+    const provisionalGraph: ArchitectureGraph = { 
+      ...currentGraph, 
+      entities: { ...currentGraph.entities, [cleanName]: newEntity } 
+    };
 
     const issues = validateGraph(provisionalGraph);
     const fatalErrors = issues.filter(issue => issue.severity === "error" && issue.nodeId === cleanName);
@@ -40,26 +57,33 @@ export function EntityBuilder() {
     }
 
     try {
-      addEntity(newEntity);
+      if (isEdit && initialData) {
+        updateEntity(initialData.name, { primaryKey: newEntity.primaryKey, fields: newEntity.fields });
+      } else {
+        addEntity(newEntity);
+      }
       setError(null);
-      setName("");
-      setPrimaryKey("id");
-      setFields([{ name: "id", type: "string", required: true }]);
+      if (!isEdit) {
+        setName("");
+        setPrimaryKey("id");
+        setFields([{ name: "id", type: "string", required: true }]);
+      }
+      if (onClose) onClose();
     } catch (e: any) {
       setError(e.message);
     }
   };
 
-  const inputStyle = { flex: 1, padding: "0.6rem", border: "1px solid #d1d5db", borderRadius: "6px", outline: "none", fontSize: "0.875rem" };
+  const inputStyle = { flex: 1, padding: "0.6rem", border: "1px solid #d1d5db", borderRadius: "6px", outline: "none", fontSize: "0.875rem", background: "#fff" };
 
   return (
-    <div style={{ background: "#ffffff", padding: "1.5rem", border: "1px solid #e5e7eb", borderRadius: "8px", boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)" }}>
-      <h2 style={{ marginBottom: "1.25rem", fontSize: "1.125rem", fontWeight: "600", color: "#111827" }}>Manual Entity Builder</h2>
+    <div style={{ background: "#ffffff", padding: "1.5rem", border: "1px solid #e5e7eb", borderRadius: "8px" }}>
+      <h2 style={{ marginBottom: "1.25rem", fontSize: "1.125rem", fontWeight: "600", color: "#111827" }}>{isEdit ? `Edit Entity: ${initialData?.name}` : "Create Entity"}</h2>
       
       {error && <div style={{ background: "#fef2f2", color: "#991b1b", padding: "0.75rem", borderRadius: "6px", marginBottom: "1rem", fontSize: "0.875rem", border: "1px solid #fecaca" }}>⚠️ {error}</div>}
 
       <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem" }}>
-        <input placeholder="Entity Name (e.g., User)" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+        <input placeholder="Entity Name" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} disabled={isEdit} />
         <input placeholder="Primary Key" value={primaryKey} onChange={(e) => setPrimaryKey(e.target.value)} style={inputStyle} />
       </div>
 
@@ -76,16 +100,16 @@ export function EntityBuilder() {
             <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.875rem", color: "#4b5563", cursor: "pointer" }}>
               <input type="checkbox" checked={field.required} onChange={(e) => handleUpdateField(index, "required", e.target.checked)} /> Req
             </label>
-            <button onClick={() => handleRemoveField(index)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "1.2rem", padding: "0 0.5rem" }} title="Remove Field">×</button>
+            <button type="button" onClick={() => handleRemoveField(index)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "1.2rem", padding: "0 0.5rem" }} title="Remove Field">×</button>
           </div>
         ))}
-        <button onClick={handleAddField} style={{ background: "#f3f4f6", border: "1px dashed #d1d5db", color: "#4b5563", padding: "0.6rem", borderRadius: "6px", cursor: "pointer", width: "100%", fontSize: "0.875rem", fontWeight: "500", marginTop: "0.5rem", transition: "background 0.2s" }}>
+        <button type="button" onClick={handleAddField} style={{ background: "#f3f4f6", border: "1px dashed #d1d5db", color: "#4b5563", padding: "0.6rem", borderRadius: "6px", cursor: "pointer", width: "100%", fontSize: "0.875rem", fontWeight: "500", marginTop: "0.5rem" }}>
           + Add Field
         </button>
       </div>
 
-      <button onClick={handleCreate} style={{ width: "100%", padding: "0.75rem", background: "#111827", color: "#ffffff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", fontSize: "0.875rem", transition: "background 0.2s" }}>
-        Inject Entity to AST
+      <button type="button" onClick={handleSave} style={{ width: "100%", padding: "0.75rem", background: "#111827", color: "#ffffff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", fontSize: "0.875rem" }}>
+        {isEdit ? "Update Entity" : "Inject Entity to AST"}
       </button>
     </div>
   );
