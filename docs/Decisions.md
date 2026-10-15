@@ -252,7 +252,7 @@ The `@repo/store` graph store continues to expose the canonical
 its existing success/message contract, maintaining backward
 compatibility without adding a `diagnostics` field to the public API.
 If diagnostics are added to the return type in the future, a new ADR
-(D-011) should document that change rather than amending D-010.
+(D-012) should document that change rather than amending D-010.
 
 Context serialization in `@repo/ai` was updated to return arrays of entity/field information rather than single objects, ensuring deterministic processing.
 
@@ -329,3 +329,11 @@ The `HistoryToolbar` component (`apps/web/app/components/HistoryToolbar.tsx`) pr
 - The `HistoryEngine` is pure and testable in isolation from the store
 - Future collaboration features (e.g., event sourcing, distributed sync) can build on this foundation without changing the mutation pipeline
 - Entity editing (Sprint 10) reuses the same history infrastructure
+
+### Implementation Context: Snapshot vs. Operation-Level History
+
+The implemented `HistoryEngine` records **full Architecture Graph snapshots** for each committed state (maxDepth 50). This enables deterministic undo/redo of the complete architectural state.
+
+This differs from the conceptual **operation-level History Entry** model described in the Domain Model Specification (PART IV, Section 13), which envisions an audit log of individual Architecture Operations with metadata (timestamp, source, user, etc.). The current implementation does not persist an operation-level audit log, does not record operation metadata beyond the resulting graph state, and does not implement durable persistence of history across sessions.
+
+The snapshot-based approach is sufficient for the current in-memory undo/redo use case. A future ADR (D-012 or later) should address the transition to operation-level audit logging if durable history, collaboration, or compliance requirements emerge.

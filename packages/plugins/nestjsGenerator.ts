@@ -1,6 +1,6 @@
 import { BackendIR, CompiledModel, CompiledRoute } from "@repo/types";
+import { generatePrismaSchema } from "./prismaGenerator";
 
-// Deterministic type mapping for the MVP
 const mapFieldType = (type: string): string => {
   switch (type) {
     case "string": return "string";
@@ -14,55 +14,86 @@ const mapFieldType = (type: string): string => {
   }
 };
 
-// Deterministic route parameter extraction
 const extractParams = (path: string): string[] => {
   return path.split("/").filter(segment => segment.startsWith(":")).map(segment => segment.slice(1));
 };
 
+const toPascal = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const toCamel = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
 export const generateNestJSApp = (ir: BackendIR): Record<string, string> => {
   const fs: Record<string, string> = {};
 
-  // 1. Generate package.json (Deterministic string)
   fs["package.json"] = JSON.stringify({
     name: "backend-os-generated-mvp",
     version: "1.0.0",
     private: true,
     scripts: {
+      "prebuild": "prisma generate", 
       "build": "tsc",
-      "start": "node dist/main.js"
+      "start": "node dist/main.js",
+      "db:push": "prisma db push"
     },
     dependencies: {
       "@nestjs/common": "^10.0.0",
       "@nestjs/core": "^10.0.0",
       "@nestjs/platform-express": "^10.0.0",
+      "@prisma/client": "^5.0.0",
+      "dotenv": "^16.3.1",
       "reflect-metadata": "^0.2.0",
       "rxjs": "^7.8.1",
     },
     devDependencies: {
       "@types/node": "^20.0.0",
+      "prisma": "^5.0.0",
       "typescript": "^5.0.0"
     }
   }, null, 2);
 
-  // 2. Generate tsconfig.json (Source-to-dist boundary)
   fs["tsconfig.json"] = JSON.stringify({
-  compilerOptions: {
-    module: "nodenext",
-    target: "es2022",
-    outDir: "./dist",
-    rootDir: "./src",
-    experimentalDecorators: true,
-    emitDecoratorMetadata: true,
-    moduleResolution: "nodenext",
-    strict: true,
-    skipLibCheck: true,
-    types: ["node"]
-  },
-  include: ["src/**/*"]
-}, null, 2);
+    compilerOptions: {
+      module: "nodenext", target: "es2022", outDir: "./dist", rootDir: "./src",
+      experimentalDecorators: true, emitDecoratorMetadata: true,
+      moduleResolution: "nodenext", strict: true, skipLibCheck: true, types: ["node"]
+    },
+    include: ["src/**/*"]
+  }, null, 2);
 
-  // 3. Generate main.ts (Dynamic port binding & Actual Port Readiness Protocol)
-  fs["src/main.ts"] = `import { NestFactory } from '@nestjs/core';
+  fs[".env.example"] = `DATABASE_URL="postgresql://user:password@localhost:5432/mydb?schema=public"\nPORT=3000\n`;
+  fs["prisma/schema.prisma"] = generatePrismaSchema(ir.database);
+  
+  fs["src/prisma/prisma.service.ts"] = `import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  async onModuleInit() { await this.$connect(); }
+  async onModuleDestroy() { await this.$disconnect(); }
+}
+`;
+
+  fs["src/prisma/prisma.module.ts"] = `import { Global, Module } from '@nestjs/common';
+import { PrismaService } from './prisma.service';
+
+@Global()
+@Module({
+  providers: [PrismaService],
+  exports: [PrismaService],
+})
+export class PrismaModule {}
+`;
+
+  fs["src/app.controller.ts"] = `import { Controller, Get } from '@nestjs/common';
+
+@Controller('health')
+export class AppController {
+  @Get()
+  getHealth() { return { status: "ok", timestamp: new Date().toISOString() }; }
+}
+`;
+
+  fs["src/main.ts"] = `require('dotenv').config();
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -70,7 +101,6 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
   
-  // Extract actual bound port (required when PORT=0)
   const actualPort = app.getHttpServer().address().port;
   console.log(\`BACKEND_OS_READY:\${actualPort}\`);
 }
@@ -78,40 +108,61 @@ bootstrap();
 `;
 
   const activeModules: string[] = [];
-
-  // Deterministic sorting of models
   const sortedModels = [...ir.database.models].sort((a, b) => a.tableName.localeCompare(b.tableName));
 
   for (const model of sortedModels) {
-    const entityLower = model.tableName.toLowerCase();
-    const entityCapital = entityLower.charAt(0).toUpperCase() + entityLower.slice(1);
+    if (!model.primaryKey) {
+      throw new Error(`Code Generation Failed: Model '${model.tableName}' lacks a defined primary key.`);
+    }
+
+    const pascalName = toPascal(model.tableName);
+    const camelName = toCamel(model.tableName);
+    const delegate = camelName; 
     
-    // Deterministic sorting of routes
+    const pkFieldInfo = model.fields.find(f => f.name === model.primaryKey);
+    if (!pkFieldInfo) {
+      throw new Error(`Code Generation Failed: Model '${model.tableName}' declares primary key '${model.primaryKey}', but no such field exists.`);
+    }
+    if (pkFieldInfo.type !== "string" && pkFieldInfo.type !== "number") {
+      throw new Error(`Code Generation Failed: Unsupported primary key type '${pkFieldInfo.type}' on model '${model.tableName}'. Only string and number are supported.`);
+    }
+
     const routes = ir.apis.routes
-      .filter(r => r.entity.toLowerCase() === entityLower)
+      .filter(r => r.entity.toLowerCase() === model.tableName.toLowerCase())
       .sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
     
     if (routes.length === 0 && model.fields.length === 0) continue; 
     
-    activeModules.push(`${entityCapital}Module`);
+    activeModules.push(`${pascalName}Module`);
 
     const sortedFields = [...model.fields].sort((a, b) => a.name.localeCompare(b.name));
     const pkField = model.primaryKey;
+    const isNumericPk = pkFieldInfo.type === "number";
     const requiredFields = sortedFields.filter(f => f.required && f.name !== pkField).map(f => f.name);
 
-    // -- SERVICE GENERATION --
-    let serviceContent = `import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import * as crypto from 'crypto';
+    let serviceContent = `import { Injectable, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException, HttpException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
-export interface ${entityCapital}Interface {
+export interface ${pascalName}Interface {
 ${sortedFields.map(f => `  ${f.name}${f.required ? '' : '?'}: ${mapFieldType(f.type)};`).join('\n')}
 }
 
 @Injectable()
-export class ${entityCapital}Service {
-  private records: Map<string, ${entityCapital}Interface> = new Map();
+export class ${pascalName}Service {
+  constructor(private prisma: PrismaService) {}
 
-  createRecord(payload: Partial<${entityCapital}Interface>): ${entityCapital}Interface {
+  private handleError(error: unknown) {
+    if (error instanceof HttpException) throw error; 
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') throw new ConflictException('Unique constraint violation.');
+      if (error.code === 'P2025') throw new NotFoundException('Record not found.');
+    }
+    console.error('[Prisma Error]', error);
+    throw new InternalServerErrorException('Database operation failed.');
+  }
+
+  async createRecord(payload: Partial<${pascalName}Interface>): Promise<${pascalName}Interface> {
     const requiredFields = ${JSON.stringify(requiredFields)};
     for (const field of requiredFields) {
       if ((payload as Record<string, unknown>)[field] === undefined) {
@@ -119,120 +170,132 @@ export class ${entityCapital}Service {
       }
     }
     
-    if (payload.${pkField} === undefined) {
-      payload.${pkField} = crypto.randomUUID();
+    try {
+      return await this.prisma.${delegate}.create({ data: payload as any }) as unknown as ${pascalName}Interface;
+    } catch (error) {
+      this.handleError(error);
     }
-    
-    this.records.set(payload.${pkField} as string, payload as ${entityCapital}Interface);
-    return payload as ${entityCapital}Interface;
+    throw new InternalServerErrorException();
   }
 
-  readAll(): ${entityCapital}Interface[] {
-    return Array.from(this.records.values());
+  async readAll(): Promise<${pascalName}Interface[]> {
+    try {
+      return await this.prisma.${delegate}.findMany() as unknown as ${pascalName}Interface[];
+    } catch (error) {
+      this.handleError(error);
+    }
+    return [];
   }
 
-  readOne(id: string): ${entityCapital}Interface {
-    const record = this.records.get(id);
-    if (!record) throw new NotFoundException();
-    return record;
+  async readOne(id: string): Promise<${pascalName}Interface> {
+    const parsedId = ${isNumericPk ? 'Number(id)' : 'id'};
+    ${isNumericPk ? `if (isNaN(parsedId as number)) throw new BadRequestException('Invalid ID format');` : ''}
+
+    try {
+      const record = await this.prisma.${delegate}.findUnique({ where: { ${pkField}: parsedId } });
+      if (!record) throw new NotFoundException(); 
+      return record as unknown as ${pascalName}Interface;
+    } catch (error) {
+      this.handleError(error);
+    }
+    throw new InternalServerErrorException();
   }
 
-  updateRecord(id: string, payload: Partial<${entityCapital}Interface>): ${entityCapital}Interface {
-    const existing = this.records.get(id);
-    if (!existing) throw new NotFoundException();
-    
-    const updated = { ...existing, ...payload };
-    updated.${pkField} = existing.${pkField}; // Preserve primary key
-    
-    this.records.set(id, updated);
-    return updated;
+  async updateRecord(id: string, payload: Partial<${pascalName}Interface>): Promise<${pascalName}Interface> {
+    const parsedId = ${isNumericPk ? 'Number(id)' : 'id'};
+    ${isNumericPk ? `if (isNaN(parsedId as number)) throw new BadRequestException('Invalid ID format');` : ''}
+
+    try {
+      return await this.prisma.${delegate}.update({
+        where: { ${pkField}: parsedId },
+        data: payload as any,
+      }) as unknown as ${pascalName}Interface;
+    } catch (error) {
+      this.handleError(error);
+    }
+    throw new InternalServerErrorException();
   }
 
-  deleteRecord(id: string): void {
-    const existing = this.records.get(id);
-    if (!existing) throw new NotFoundException();
-    this.records.delete(id);
+  async deleteRecord(id: string): Promise<void> {
+    const parsedId = ${isNumericPk ? 'Number(id)' : 'id'};
+    ${isNumericPk ? `if (isNaN(parsedId as number)) throw new BadRequestException('Invalid ID format');` : ''}
+
+    try {
+      await this.prisma.${delegate}.delete({ where: { ${pkField}: parsedId } });
+    } catch (error) {
+      this.handleError(error);
+    }
   }
 }
 `;
-    fs[`src/${entityLower}/${entityLower}.service.ts`] = serviceContent;
+    fs[`src/${camelName}/${camelName}.service.ts`] = serviceContent;
 
-    // -- CONTROLLER GENERATION --
-    // BadRequestException is explicitly imported for safe parameterized handler generation
-    let controllerContent = `import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode, BadRequestException } from '@nestjs/common';
-import { ${entityCapital}Service, ${entityCapital}Interface } from './${entityLower}.service';
+    let controllerContent = `import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode } from '@nestjs/common';
+import { ${pascalName}Service, ${pascalName}Interface } from './${camelName}.service';
 
 @Controller()
-export class ${entityCapital}Controller {
-  constructor(private readonly service: ${entityCapital}Service) {}
+export class ${pascalName}Controller {
+  constructor(private readonly service: ${pascalName}Service) {}
 `;
 
     for (const route of routes) {
       const decorator = route.method.charAt(0).toUpperCase() + route.method.slice(1).toLowerCase();
-      const routePath = route.path.replace(/^\//, ''); // Strip leading slash
+      const routePath = route.path.replace(/^\//, ''); 
       const pathArg = routePath ? `'${routePath}'` : '';
       
       const params = extractParams(route.path);
       const paramArgs = params.map(p => `@Param('${p}') ${p}: string`);
       const hasBody = route.method === "POST" || route.method === "PUT";
       
-      if (hasBody) {
-        paramArgs.push(`@Body() payload: Partial<${entityCapital}Interface>`);
-      }
-
+      if (hasBody) paramArgs.push(`@Body() payload: Partial<${pascalName}Interface>`);
       const methodSignature = paramArgs.join(', ');
 
       let serviceCall = '';
       if (route.action === 'create') {
-        serviceCall = `return this.service.createRecord(${hasBody ? 'payload' : '{}'});`;
+        serviceCall = `return await this.service.createRecord(${hasBody ? 'payload' : '{}'});`;
       } else if (route.action === 'read') {
-        serviceCall = params.length > 0 
-          ? `return this.service.readOne(${params[0]});` 
-          : `return this.service.readAll();`;
+        serviceCall = params.length > 0 ? `return await this.service.readOne(${params[0]});` : `return await this.service.readAll();`;
       } else if (route.action === 'update') {
-        serviceCall = params.length > 0 
-          ? `return this.service.updateRecord(${params[0]}, ${hasBody ? 'payload' : '{}'});`
-          : `throw new BadRequestException('Missing lookup parameter');`;
+        serviceCall = `return await this.service.updateRecord(${params[0]}, ${hasBody ? 'payload' : '{}'});`;
       } else if (route.action === 'delete') {
-        serviceCall = params.length > 0 
-          ? `this.service.deleteRecord(${params[0]});`
-          : `throw new BadRequestException('Missing lookup parameter');`;
+        serviceCall = `await this.service.deleteRecord(${params[0]});`;
       }
 
       controllerContent += `
   @${decorator}(${pathArg})${route.method === 'POST' && route.action === 'create' ? '\n  @HttpCode(201)' : ''}
-  ${route.handlerId}(${methodSignature}) {
+  async ${route.handlerId}(${methodSignature}) {
     ${serviceCall}
   }
 `;
     }
     controllerContent += `}\n`;
-    fs[`src/${entityLower}/${entityLower}.controller.ts`] = controllerContent;
+    fs[`src/${camelName}/${camelName}.controller.ts`] = controllerContent;
 
-    // -- MODULE GENERATION --
-    fs[`src/${entityLower}/${entityLower}.module.ts`] = `import { Module } from '@nestjs/common';
-import { ${entityCapital}Controller } from './${entityLower}.controller';
-import { ${entityCapital}Service } from './${entityLower}.service';
+    fs[`src/${camelName}/${camelName}.module.ts`] = `import { Module } from '@nestjs/common';
+import { ${pascalName}Controller } from './${camelName}.controller';
+import { ${pascalName}Service } from './${camelName}.service';
 
 @Module({
-  controllers: [${entityCapital}Controller],
-  providers: [${entityCapital}Service],
+  controllers: [${pascalName}Controller],
+  providers: [${pascalName}Service],
 })
-export class ${entityCapital}Module {}
+export class ${pascalName}Module {}
 `;
   }
 
-  // 4. Generate app.module.ts
   const importsStr = sortedModels
-    .filter(m => activeModules.includes(`${m.tableName.charAt(0).toUpperCase() + m.tableName.slice(1)}Module`))
-    .map(m => `import { ${m.tableName.charAt(0).toUpperCase() + m.tableName.slice(1)}Module } from './${m.tableName.toLowerCase()}/${m.tableName.toLowerCase()}.module';`)
+    .filter(m => activeModules.includes(`${toPascal(m.tableName)}Module`))
+    .map(m => `import { ${toPascal(m.tableName)}Module } from './${toCamel(m.tableName)}/${toCamel(m.tableName)}.module';`)
     .join('\n');
     
   fs['src/app.module.ts'] = `import { Module } from '@nestjs/common';
+import { PrismaModule } from './prisma/prisma.module';
+import { AppController } from './app.controller';
 ${importsStr}
 
 @Module({
-  imports: [${activeModules.join(', ')}],
+  imports: [PrismaModule, ${activeModules.join(', ')}],
+  controllers: [AppController],
 })
 export class AppModule {}
 `;

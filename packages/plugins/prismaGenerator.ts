@@ -1,13 +1,17 @@
-import { DatabaseIR, Field } from "@repo/types";
+import { DatabaseIR, Field, Relation } from "@repo/types";
 
-const mapFieldTypeToPrisma = (type: string): string => {
+const toPascal = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const toCamel = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
+const mapFieldTypeToPrisma = (type: string, fieldName: string, modelName: string): string => {
   switch (type) {
     case "string": return "String";
-    case "number": return "Int"; // Keeping it simple for MVP; could be Float
+    case "number": return "Int";
     case "boolean": return "Boolean";
     case "datetime": return "DateTime";
     case "json": return "Json";
-    default: return "String";
+    case "enum": throw new Error(`Generation Failed: Enum types are not currently supported by the database generator (Field '${fieldName}' on '${modelName}'). Documented requirement: Remove or map enum fields manually.`);
+    default: throw new Error(`Generation Failed: Unknown or unsupported field type '${type}' (Field '${fieldName}' on '${modelName}').`);
   }
 };
 
@@ -24,35 +28,106 @@ datasource db {
 
 `;
 
-  for (const model of database.models) {
-    // Model Header
-    schema += `model ${model.tableName.charAt(0).toUpperCase() + model.tableName.slice(1)} {\n`;
+  const relationLines = new Map<string, string[]>();
+  const modelFieldNames = new Map<string, Set<string>>();
+  const modelNames = new Set<string>();
 
-    // Fields
+  // PHASE 0: Validate Primary Keys and Model Names
+  for (const model of database.models) {
+    const pName = toPascal(model.tableName);
+    if (modelNames.has(pName.toLowerCase())) {
+      throw new Error(`Generation Failed: Model name collision detected for '${pName}'. Models must have uniquely resolvable names.`);
+    }
+    modelNames.add(pName.toLowerCase());
+
+    const pkField = model.fields.find(f => f.name === model.primaryKey);
+    if (!pkField) {
+      throw new Error(`Generation Failed: Primary key '${model.primaryKey}' declared on model '${model.tableName}' does not exist in its fields.`);
+    }
+    if (pkField.type !== "string" && pkField.type !== "number") {
+      throw new Error(`Generation Failed: Primary key '${pkField.name}' on '${model.tableName}' must be string or number. Found '${pkField.type}'.`);
+    }
+
+    // Initialize collision tracker with explicitly defined scalar fields
+    modelFieldNames.set(model.tableName.toLowerCase(), new Set(model.fields.map(f => f.name)));
+  }
+
+  // PHASE 1: Validate and compute relations
+  for (const rel of database.relations || []) {
+    if (rel.type !== "one-to-many") {
+      throw new Error(`Generation Failed: Unsupported relation type '${rel.type}'. Only 'one-to-many' is fully supported.`);
+    }
+
+    const srcModel = database.models.find(m => m.tableName.toLowerCase() === rel.source.toLowerCase());
+    const tgtModel = database.models.find(m => m.tableName.toLowerCase() === rel.target.toLowerCase());
+
+    if (!srcModel) throw new Error(`Generation Failed: Relation source model '${rel.source}' not found.`);
+    if (!tgtModel) throw new Error(`Generation Failed: Relation target model '${rel.target}' not found.`);
+
+    if (rel.sourceField !== srcModel.primaryKey) {
+      throw new Error(`Generation Failed: Relation from '${rel.source}' to '${rel.target}' must reference the source's primary key ('${srcModel.primaryKey}'). Referencing '${rel.sourceField}' is unsupported.`);
+    }
+
+    const srcPk = srcModel.fields.find(f => f.name === srcModel.primaryKey)!; 
+
+    const tgtFk = tgtModel.fields.find(f => f.name === rel.targetField);
+    if (!tgtFk) {
+      throw new Error(`Generation Failed: Target foreign key field '${rel.targetField}' is missing from model '${rel.target}'. Explicitly declare this field to establish relation requiredness.`);
+    }
+
+    if (tgtFk.type !== srcPk.type) {
+      throw new Error(`Generation Failed: Foreign key '${rel.targetField}' type (${tgtFk.type}) does not match referenced primary key '${rel.sourceField}' type (${srcPk.type}).`);
+    }
+
+    const srcFieldsTracker = modelFieldNames.get(srcModel.tableName.toLowerCase())!;
+    const tgtFieldsTracker = modelFieldNames.get(tgtModel.tableName.toLowerCase())!;
+
+    // Naming Collision Detection (Tracks cross-relation collisions)
+    const relNameTarget = `${toCamel(rel.target)}List`;
+    if (srcFieldsTracker.has(relNameTarget)) {
+      throw new Error(`Generation Failed: Relation field collision. Model '${srcModel.tableName}' already contains field '${relNameTarget}'.`);
+    }
+    srcFieldsTracker.add(relNameTarget);
+    
+    const relNameSource = `${toCamel(rel.source)}Ref`;
+    if (tgtFieldsTracker.has(relNameSource)) {
+      throw new Error(`Generation Failed: Relation field collision. Model '${tgtModel.tableName}' already contains field '${relNameSource}'.`);
+    }
+    tgtFieldsTracker.add(relNameSource);
+
+    const isOptional = !tgtFk.required ? "?" : "";
+    const relName = `Rel_${toPascal(rel.source)}_${toPascal(rel.target)}_${rel.targetField}`;
+    
+    const srcLines = relationLines.get(srcModel.tableName) || [];
+    srcLines.push(`  ${relNameTarget} ${toPascal(rel.target)}[] @relation("${relName}")`);
+    relationLines.set(srcModel.tableName, srcLines);
+
+    const tgtLines = relationLines.get(tgtModel.tableName) || [];
+    tgtLines.push(`  ${relNameSource} ${toPascal(rel.source)}${isOptional} @relation("${relName}", fields: [${rel.targetField}], references: [${rel.sourceField}])`);
+    relationLines.set(tgtModel.tableName, tgtLines);
+  }
+
+  // PHASE 2: Generate Schema Models
+  for (const model of database.models) {
+    const pascalName = toPascal(model.tableName);
+    schema += `model ${pascalName} {\n`;
+
     model.fields.forEach((field: Field) => {
-      // Skip relation fields in basic mapping, handle them via relations config if needed
       if (field.type === "relation") return; 
       
-      const prismaType = mapFieldTypeToPrisma(field.type);
-      const isId = field.name === model.primaryKey ? " @id @default(uuid())" : "";
-      const isOptional = !field.required && !isId ? "?" : "";
+      const prismaType = mapFieldTypeToPrisma(field.type, field.name, model.tableName);
+      let isId = "";
       
+      if (field.name === model.primaryKey) {
+        isId = prismaType === "Int" ? " @id @default(autoincrement())" : " @id @default(uuid())";
+      }
+      
+      const isOptional = !field.required && !isId ? "?" : "";
       schema += `  ${field.name} ${prismaType}${isOptional}${isId}\n`;
     });
 
-    // Relations (MVP: One-to-Many / Many-to-One rendering)
-    model.relations.forEach((rel) => {
-      if (rel.source === model.tableName) {
-        // Source side of relation
-        const targetModelName = rel.target.charAt(0).toUpperCase() + rel.target.slice(1);
-        schema += `  ${rel.target.toLowerCase()}s ${targetModelName}[]\n`;
-      } else if (rel.target === model.tableName) {
-        // Target side of relation (Foreign Key)
-        const sourceModelName = rel.source.charAt(0).toUpperCase() + rel.source.slice(1);
-        schema += `  ${rel.source.toLowerCase()} ${sourceModelName} @relation(fields: [${rel.source.toLowerCase()}Id], references: [${rel.sourceField || 'id'}])\n`;
-        schema += `  ${rel.source.toLowerCase()}Id String\n`; // Add foreign key field
-      }
-    });
+    const rels = relationLines.get(model.tableName) || [];
+    rels.forEach(rel => schema += `${rel}\n`);
 
     schema += `}\n\n`;
   }
