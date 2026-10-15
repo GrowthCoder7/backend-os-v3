@@ -2210,7 +2210,7 @@ Future versions of Semantic Analysis may introduce:
 
 These capabilities should extend the existing semantic pipeline while preserving deterministic analysis.
 
-# 11. Compiler Pipeline
+# 13. Compiler Pipeline
 
 ## Purpose
 
@@ -2515,7 +2515,7 @@ The Compiler Pipeline is expected to remain the central transformation engine of
 
 Future enhancements should extend the compiler through additional passes, richer optimization strategies, and improved compilation performance while preserving deterministic execution and framework independence.
 
-# 12. Backend Intermediate Representation (Backend IR)
+# 14. Backend Intermediate Representation (Backend IR)
 
 ## Purpose
 
@@ -2873,7 +2873,7 @@ Backend IR is expected to remain the central compilation artifact of Backend OS.
 
 As the platform evolves, additional architectural domains, richer metadata, and advanced optimization strategies may expand the IR while preserving its role as the single framework-independent representation consumed by all generators.
 
-# 13. Code Generation Framework
+# 15. Code Generation Framework
 
 ## Purpose
 
