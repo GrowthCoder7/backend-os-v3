@@ -4,7 +4,10 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@repo/types": "workspace:*",
-    "@repo/compiler" : "workspace:*"
+    "@repo/compiler": "workspace:*",
+    "@repo/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@repo/plugins": "workspace:*"
   }
 }
