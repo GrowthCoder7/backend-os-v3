@@ -17,40 +17,39 @@ PART I — Foundations
 PART II — Project Domain
 
 3. Project
-4. Workspace
-5. Project Configuration
+4. Project Configuration
 
 PART III — Architecture Domain
 
-6. Architecture Graph
-7. Entity
-8. Field
-9. Relationship
-10. Endpoint
-11. Workflow
-12. Event
+5. Architecture Graph
+6. Entity
+7. Field
+8. Relationship
+9. Endpoint
+10. Workflow
+11. Event
 
 PART IV — Editing Domain
 
-13. Architecture Operation
-14. History Entry
+12. Architecture Operation
+13. History Entry
 
 PART V — Compiler Domain
 
-15. Diagnostic
-16. Validation Result
-17. Semantic Model
-18. Symbol
-19. Symbol Table
-20. Dependency Graph
-21. Compilation Context
-22. Backend IR
+14. Diagnostic
+15. Validation Result
+16. Semantic Model
+17. Symbol
+18. Symbol Table
+19. Dependency Graph
+20. Compilation Context
+21. Backend IR
 
 PART VI — Generation Domain
 
-23. Generator
-24. Generation Context
-25. Generated Artifact
+22. Generator
+23. Generation Context
+24. Generated Artifact
 
 PART VII — Object Relationships
 

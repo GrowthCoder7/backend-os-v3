@@ -380,7 +380,7 @@ This section defines the core subsystems responsible for representing, modifying
 
 Together, these subsystems form the deterministic compilation pipeline that powers Backend OS.
 
-6. Architecture Operations
+8. Architecture Operations
    Purpose
 
 Architecture Operations define the only supported mechanism for modifying a backend architecture.
@@ -602,7 +602,7 @@ Architecture Operations are expected to become the canonical editing language fo
 
 Future platform capabilities—including collaborative editing, AI-assisted architecture design, synchronization, cloud editing, and enterprise workflows—should integrate by producing Architecture Operations rather than introducing new editing mechanisms.
 
-# 7. Architecture Operation Executor
+# 9. Architecture Operation Executor
 
 ## Purpose
 
@@ -1061,7 +1061,7 @@ As the platform evolves, new editing interfaces should integrate by producing Ar
 
 This preserves deterministic editing behavior and ensures that every architectural modification follows the same execution pipeline.
 
-# 8. Architecture Graph
+# 10. Architecture Graph
 
 ## Purpose
 
@@ -1459,7 +1459,7 @@ The Architecture Graph is expected to remain the canonical architectural model o
 
 Future capabilities such as collaborative editing, architecture versioning, graph differencing, synchronization, and AI-assisted architecture generation should extend the existing graph model while preserving backward compatibility and deterministic compilation.
 
-# 9. Validation Engine
+# 11. Validation Engine
 
 ## Purpose
 
@@ -1881,7 +1881,7 @@ The Validation Engine is expected to remain the first quality gate within the Ba
 
 Future capabilities should extend the validation framework by introducing additional rules and validators while preserving deterministic execution and the shared Diagnostics Model used throughout the platform.
 
-# 10. Semantic Analysis
+# 12. Semantic Analysis
 
 ## Purpose
 

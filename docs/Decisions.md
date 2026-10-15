@@ -282,3 +282,50 @@ we can make this even stronger.
 - Context serialization format changed; consumers must update accordingly
 - Backward compatibility maintained for all public interfaces
 - Future AI provider updates can follow the same pattern without architectural changes
+
+---
+
+# D-011 — History Engine and Undo/Redo (Sprint 9)
+
+**Date:** 2026-10-13  
+**Category:** Engineering / Implementation  
+**Status:** Accepted
+
+### Context
+
+Sprints 1–8 established the canonical Architecture Operation → Executor → Validation → Commit pipeline for all mutation domains (entities, relations, endpoints, events, workflows). The Editing Engine lacked history tracking, undo, and redo capabilities.
+
+Sprint 9 implemented a deterministic History Engine (`@repo/store/src/history.ts`) that records committed Architecture Graph states and enables undo/redo without violating the single-execution-pipeline principle.
+
+### Decision
+
+A `HistoryEngine` class is introduced in `@repo/store/src/history.ts` with the following characteristics:
+
+- **Deterministic**: Records only successfully committed Architecture Graph states via `record()`
+- **Atomic**: Each `record()` call clears the redo stack and enforces a maximum depth (default 50)
+- **Isolated**: Uses `cloneGraph()` (structuredClone fallback to JSON) to ensure zero reference sharing between live state and history snapshots
+- **Decoupled**: The engine is strictly separated from store mutation logic and validation—it only knows about `ArchitectureGraph`
+
+The `graphStore.ts` integrates the engine via:
+- `commitGraph(state, newGraph)` — called after every successful operation execution; records the new state and updates `canUndo`/`canRedo` flags
+- `undo()` / `redo()` — mutate the store's graph to the previous/next recorded state
+- `resetGraph(graph)` — resets the entire history to a new baseline (used for project loading)
+
+The `HistoryToolbar` component (`apps/web/app/components/HistoryToolbar.tsx`) provides the UI for undo/redo actions.
+
+### Verification
+
+- Unit tests for `HistoryEngine` in `packages/store/src/__tests__/history.test.ts` covering: record, undo, redo, clear, reset, maxDepth enforcement, snapshot inspection
+- Canonical mutation tests in `packages/store/src/__tests__/canonical-mutation.test.ts` verifying that all mutators (entities, relations, endpoints, events, workflows) record history
+- `npm --workspace=web run check-types` passes
+- `npm run build` passes
+- Sprint 9 verification via `verify-sprint9.ts` (repository-resident)
+
+### Consequences
+
+- Undo/redo is now a first-class capability of the Editing Engine
+- History is scoped to committed states only—failed/rolled-back operations leave no history entry
+- The maxDepth limit prevents unbounded memory growth
+- The `HistoryEngine` is pure and testable in isolation from the store
+- Future collaboration features (e.g., event sourcing, distributed sync) can build on this foundation without changing the mutation pipeline
+- Entity editing (Sprint 10) reuses the same history infrastructure

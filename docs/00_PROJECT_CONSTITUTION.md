@@ -296,11 +296,12 @@ When conflicts arise, decisions are resolved according to the following order:
 
 1. Project Constitution
 2. Architecture Specification
-3. Approved RFCs
-4. Master Context
-5. Decision Records
-6. Sprint Specifications
-7. Implementation
+3. Domain Model Specification
+4. Approved Architectural Decision Records (ADRs)
+5. Master Context
+6. DECISIONS.md (accepted engineering and implementation decisions)
+7. Sprint Specifications and Implementation Plans
+8. Implementation
 
 No implementation may contradict a higher-level document.
 
@@ -329,6 +330,19 @@ The purpose of an RFC is to ensure that architectural evolution is intentional, 
 ### RFC Lifecycle
 
 Every RFC follows the same lifecycle:
+
+1. **Proposal** — Author submits RFC with problem statement, proposed solution, alternatives considered, and impact analysis
+2. **Review** — Stakeholders review for architectural consistency, completeness, and alignment with Constitution
+3. **Decision** — Formal acceptance, rejection, or deferral with recorded rationale
+4. **Implementation** — If accepted, implementation proceeds per approved design
+5. **Verification** — Implementation verified against RFC requirements
+6. **Canonical Document Reconciliation** — Affected canonical documents (Architecture Specification, Domain Model Specification, Master Context) updated to reflect the decision
+
+### Rejection and Deferral
+
+An RFC may be **rejected** if it violates architectural principles, introduces unacceptable complexity, or conflicts with higher-authority documents. Rejection rationale is recorded.
+
+An RFC may be **deferred** if it depends on unresolved architectural decisions, lacks implementation capacity, or should be sequenced after other work. Deferral records the blocking condition and expected revisit timeline.
 
 ### Decision Records
 

@@ -15,7 +15,7 @@
 | Architecture Version | 1.0 (Frozen) |
 | Repository Phase | Phase 2 — Core Platform Development |
 | Project Type | Compiler Platform |
-| Last Updated | 27 August 2026 |
+| Last Updated | 15 October 2026 |
 
 ---
 
@@ -100,13 +100,16 @@ Architecture Specification
 Domain Model Specification
         │
         ▼
-Architectural Decision Records
+Approved Architectural Decision Records (ADRs)
         │
         ▼
 Master Context
         │
         ▼
-DECISIONS.md
+DECISIONS.md (accepted engineering and implementation decisions)
+        │
+        ▼
+Sprint Specifications and Implementation Plans
         │
         ▼
 Implementation
@@ -150,6 +153,7 @@ The following have been finalized:
 - Backend IR to NestJS code generation
 - End-to-end materialize → install → build → start → HTTP CRUD pipeline
 - AI intent interpretation using Gemini
+- History Engine with undo/redo (max depth 50)
 
 ---
 
@@ -177,6 +181,7 @@ Current progress includes, but is not limited to:
   into Zod-validated `IntentResponse` objects, converted by `@repo/intent`
   into canonical Architecture Operations, executed atomically through the
   existing `@repo/executor`, and successfully compiled into Backend IR.
+- Sprint 7: Route correction and Workflow endpoint integration. Verified via `verify-sprint7.ts`.
 - Sprint 8: Context-aware AI intent generation with strict Zod validation,
   automatic retry/recovery (maximum 3 attempts), malformed payload
   regression handling, server-side Gemini boundary enforcement, AI →
@@ -186,6 +191,17 @@ Current progress includes, but is not limited to:
   `IntentResponse` objects, adapted by `@repo/intent` into canonical
   Architecture Operations, executed atomically through `@repo/executor`,
   and compiled into Backend IR.
+- Sprint 9: History Engine (`@repo/store/src/history.ts`) with deterministic
+  undo/redo (max 50 states, structuredClone/JSON fallback). All mutators
+  (entities, relations, endpoints, events, workflows) record committed
+  states via `commitGraph()`. HistoryToolbar UI provides undo/redo actions.
+  Verified via `verify-sprint9.ts`, unit tests for `HistoryEngine` and
+  canonical mutations.
+- Sprint 10: Full builder editing support (Entity, Relation, Endpoint, Event, Workflow)
+  with create and update modes via canonical `updateX` operations. All builders
+  integrated with HistoryToolbar for undo/redo. Manual UI verification completed
+  for all five builders. Automated verification via `verify-sprint10.ts` (repository-resident).
+  Docker production-image build successful; automated test suite passes.
 
 Implementation status is expected to evolve continuously while the architecture remains stable.
 
@@ -427,7 +443,7 @@ The project currently includes:
 - Shared type system and state management
 - Parallel subsystem development across multiple packages
 
-Implementation has since progressed through Sprints 3–6 (see "Current Implementation Status" for the detailed, repo-verified progression):
+Implementation has since progressed through Sprints 3–10 (see "Current Implementation Status" for the detailed, repo-verified progression):
 
 - Sprint 3 — Relation and Endpoint operation execution surface complete and verified.
 - Sprint 4 — Backend IR → NestJS generator framework complete and deterministic; generated project builds cleanly.
@@ -437,6 +453,14 @@ Implementation has since progressed through Sprints 3–6 (see "Current Implemen
   into Zod-validated `IntentResponse` objects, converted by `@repo/intent`
   into canonical Architecture Operations, executed atomically through the
   existing `@repo/executor`, and successfully compiled into Backend IR.
+- Sprint 7: Route correction and Workflow endpoint integration. Verified via `verify-sprint7.ts`.
+- Sprint 9: History Engine (`@repo/store/src/history.ts`) with deterministic
+  undo/redo (max 50 states, structuredClone/JSON fallback). All mutators
+  record committed states. HistoryToolbar UI integrated.
+- Sprint 10: Full builder editing support (Entity, Relation, Endpoint, Event, Workflow)
+  with create and update modes via canonical `updateX` operations. All builders
+  integrated with HistoryToolbar. Manual UI verification completed.
+  Docker production-image build successful; automated test suite passes.
 
 Implementation is now focused on expanding the Editing Engine to remaining mutation domains, completing platform/UI integration surfaces, and incrementally delivering production-ready platform modules while preserving the approved architecture.
 
@@ -1103,6 +1127,10 @@ Current repository progress includes:
 - Sprint 4: Backend IR → NestJS generator framework complete and deterministic; generated project builds cleanly
 - Sprint 5: End-to-end materialize → install → build → start → live HTTP CRUD verification complete
 - Sprint 6: AI intent interpretation package (`@repo/ai`) introduced using Google Gemini to translate natural language into Architecture Operations
+- Sprint 7: Route correction and Workflow endpoint integration
+- Sprint 8: Context-aware AI intent generation with retry/recovery and MVP checkpoint
+- Sprint 9: History Engine with deterministic undo/redo (max 50 states); all mutators record committed states; HistoryToolbar UI
+- Sprint 10: Full builder editing support (Entity, Relation, Endpoint, Event, Workflow) with create/update modes; HistoryToolbar integration
 
 ### In Progress
 
@@ -1116,9 +1144,6 @@ Current repository progress includes:
 
 ### Planned
 
-- Workflow Builder
-- Endpoint Builder
-- Event Modeling
 - Multi-framework generators
 - Incremental compilation
 - Collaboration services
@@ -3085,12 +3110,12 @@ Known areas requiring future refinement include:
 - Incomplete compiler passes (no explicit normalization or optimization passes yet)
 - Missing optimization stages
 - Builder consistency improvements
-- Operation execution is complete for entity, relation, and endpoint domains; **events and workflows still mutate the Architecture Graph directly inside `@repo/store` (`graphStore.ts` `addRelation`, `addEndpoint`, `addEvent`, `addWorkflow`)**, bypassing the Operation Executor. This is a known violation of the single-editing-pipeline invariant and is scheduled for remediation.
 - Legacy `runtime/ExecutionEngine.ts` (`CompilerManifest` ingestor) is superseded by the Sprint 5 `ProjectMaterializer` + `RuntimeOrchestrator` surface and remains in the package as abandoned scaffolding.
 - `compiler/index.ts` does not currently export `CompilerManifest` referenced by the legacy runtime `ExecutionEngine`; the legacy surface is therefore non-functional and should be removed.
 - No persistence layer exists — the Architecture Graph lives in memory via the Zustand store only.
-- Sprint behavioral verification is repository-backed through `verify-sprint2.ts` through `verify-sprint6.ts`; future sprints must preserve and extend this verification approach.
+- Sprint behavioral verification is repository-backed through `verify-sprint2.ts` through `verify-sprint10.ts`; future sprints must preserve and extend this verification approach.
 - Monorepo typecheck orchestration remains dependent on workspace-level task configuration
+- **Stable Identity Contract Gap**: The Domain Model Specification requires globally stable, immutable identifiers for all domain objects (Entity, Relation, Endpoint, Event, Workflow). Current implementation uses name-based lookup (Entity.name, composite keys for Relation/Endpoint/Workflow) rather than opaque stable IDs. This creates a persistence contract risk: restored graphs may lose referential integrity if names change between save/load. Flagged as a contract-review item to resolve via ADR before Sprint 11 persistence implementation depends on stable identities.
 
 Technical debt should remain visible and intentionally managed.
 
@@ -3195,7 +3220,7 @@ Enable complete architectural modeling through the Visual Builder.
 - Entire backend architecture can be represented through the Architecture Graph.
 - Manual graph editing is no longer required.
 
-**Status:** Planned
+**Status:** Completed (Sprints 2–10)
 
 ---
 
@@ -3218,20 +3243,18 @@ Implement the deterministic editing pipeline.
 - Every architectural modification flows through the Operation system.
 - Direct graph mutation is eliminated.
 
-**Status:** In Progress
+**Status:** Completed (Sprints 1–10)
 
 Milestone 3 — Editing Engine
-             ↓
-         IN PROGRESS
-             ↓
-     Sprint 1 — Entity Create
-     Sprint 2 — Entity Update/Delete
-     Sprint 3 — Relation + Endpoint Create/Update/Delete
-             ↓
-     Future — Event Operations
-     Future — Workflow Operations
-     Future — History
-     Future — Undo/Redo
+              ↓
+          COMPLETED
+              ↓
+      Sprint 1 — Entity Create
+      Sprint 2 — Entity Update/Delete
+      Sprint 3 — Relation + Endpoint Create/Update/Delete
+      Sprint 7 — Event + Workflow Create/Update/Delete
+      Sprint 9 — History Engine (snapshot-based, maxDepth 50)
+      Sprint 10 — Undo/Redo via HistoryToolbar UI
 
 ### Completed Foundation
 
@@ -3247,11 +3270,15 @@ Graph Commit / Rollback
         ↓
 Store Integration
 
-Sprint 3 extended the same execution path to relations and endpoints.
+Sprints 2–3 extended the same execution path to entity update/delete, relations, and endpoints.
 
-The milestone remains in progress until event and workflow operations are
-implemented, store-direct mutation is eliminated for all domains, and
-history/undo-redo is delivered.
+Sprint 7 implemented Event and Workflow operations through the same canonical pipeline.
+
+Sprint 9 delivered the deterministic History Engine (`@repo/store/src/history.ts`) with snapshot-based undo/redo (maxDepth 50, `structuredClone` fallback to JSON). The `commitGraph` function records committed states after every successful operation execution.
+
+Sprint 10 integrated the `HistoryToolbar` UI component for undo/redo actions, completing the Editing Engine milestone.
+
+All mutation domains (entities, relations, endpoints, events, workflows) now flow through the canonical Architecture Operation → Executor → Validation → Commit pipeline. Direct graph mutation is eliminated.
 
 ---
 
@@ -3415,7 +3442,35 @@ Prepare Backend OS for production adoption.
 
 ---
 
-# Future Vision
+# Milestone 9 — Persistence and Project Restoration (Sprint 11)
+
+## Objective
+
+Define the save/load lifecycle for a project and its Architecture Graph, enabling durable persistence and faithful restoration.
+
+## Scope
+
+- Defining the serialization format for Project, Project Configuration, and Architecture Graph using existing domain contracts
+- Defining the restoration lifecycle: load → validate → restore history baseline → activate
+- Preserving project metadata, schema version, and compiler version metadata
+- Validating a restored graph before making it the active graph
+- Handling invalid, incompatible, or unavailable saved data without corrupting the current graph
+- Defining error handling and recovery behavior for persistence failures
+- Integrating restoration with the existing store/history lifecycle, including the documented history-baseline behavior when loading a project (`HistoryEngine.reset()`)
+- Testing that saved architecture can be restored accurately and remains compilable
+
+## Success Criteria
+
+- A project can be saved to disk and restored in a new session with full architectural fidelity
+- Restored graphs pass validation and compile deterministically to identical Backend IR
+- History baseline is correctly established on load (`HistoryEngine.reset()`), preserving undo/redo capability for subsequent edits
+- Corrupt or incompatible saved data is rejected with clear diagnostics and does not affect the current graph
+
+## Contract Blocker
+
+Before persistence implementation begins, the stable identity discrepancy documented in the Domain Model Specification must be resolved. The current types use name-based lookup (Entity.name, composite keys for Relations/Endpoints) rather than globally stable opaque IDs. A contract-compliant resolution must be agreed upon through the ADR process to ensure restored graphs maintain referential integrity across sessions.
+
+**Status:** Proposed (pending ADR for stable identity contract)
 
 Beyond Version 1.0, Backend OS may expand into additional areas, including:
 
