@@ -29,7 +29,6 @@ export class RuntimeInstance {
     private stdout: BoundedLog,
     private stderr: BoundedLog
   ) {
-    // Attach listeners immediately to avoid race conditions
     this.exitPromise = new Promise((resolve) => {
       this.child.once("exit", () => { this.hasExited = true; resolve(); });
       this.child.once("close", () => { this.hasExited = true; resolve(); });
@@ -48,7 +47,6 @@ export class RuntimeInstance {
         this.child.kill("SIGKILL");
       }
     }
-    // Guarantee resolution only when process has completely exited
     await this.exitPromise;
   }
 }
@@ -77,7 +75,8 @@ export class RuntimeOrchestrator {
     }
 
     const host = parsedUrl.hostname.replace(/^\[/, "").replace(/\]$/, "");
-    const allowedHosts = ["localhost", "127.0.0.1", "::1"];
+    // FIX: Allow host.docker.internal for isolated E2E orchestration tests
+    const allowedHosts = ["localhost", "127.0.0.1", "::1", "host.docker.internal"];
     if (!allowedHosts.includes(host)) {
       throw new Error(`Security Guard: Hostname '${host}' is not an approved loopback interface.`);
     }
@@ -93,7 +92,6 @@ export class RuntimeOrchestrator {
       throw new Error("Security Guard: Database URL must explicitly define a ?schema parameter to ensure isolation during test runs.");
     }
 
-    // Strict schema identifier verification (prevents SQL injection and enforces PostgreSQL limits)
     const schemaRegex = /^test_[a-zA-Z0-9_]+$/;
     if (!schemaRegex.test(schemaName) || schemaName.length > 63) {
       throw new Error(`Security Guard: Target schema '${schemaName}' is invalid. Must match ^test_[a-zA-Z0-9_]+$ and be <= 63 characters.`);
@@ -119,14 +117,12 @@ export class RuntimeOrchestrator {
     const { schemaName } = this.validateTestDatabaseUrl(databaseUrl, confirmDisposableTestDb);
     const sqlPath = path.join(dir, "drop_schema.sql");
     
-    // Explicit, safe interpolation (schemaName is regex-enforced alphanumeric)
     await fs.writeFile(sqlPath, `DROP SCHEMA IF EXISTS "${schemaName}" CASCADE;`);
     
     try {
-      // Prisma >= 7 compatibility: Passed connection strictly via env, dropped --url
       await this.execPromise(
         this.npmCmd, 
-        ["exec", "prisma", "db", "execute", "--file", "drop_schema.sql"], 
+        ["exec", "--", "prisma", "db", "execute", "--file", "drop_schema.sql"],
         dir, 
         60000, 
         "DB Cleanup",

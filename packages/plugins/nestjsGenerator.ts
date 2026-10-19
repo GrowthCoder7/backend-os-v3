@@ -230,7 +230,8 @@ export class ${pascalName}Service {
 `;
     fs[`src/${camelName}/${camelName}.service.ts`] = serviceContent;
 
-    let controllerContent = `import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode } from '@nestjs/common';
+    // FIX: Added BadRequestException to the imports list
+    let controllerContent = `import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode, BadRequestException } from '@nestjs/common';
 import { ${pascalName}Service, ${pascalName}Interface } from './${camelName}.service';
 
 @Controller()
