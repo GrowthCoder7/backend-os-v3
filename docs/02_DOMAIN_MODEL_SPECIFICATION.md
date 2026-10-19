@@ -4960,6 +4960,7 @@ Generators encapsulate framework-specific knowledge while remaining independent 
 - Producing source code
 - Producing configuration files
 - Producing project structure
+- Producing database schemas
 - Reporting generation diagnostics
 
 ---
@@ -4980,6 +4981,7 @@ Generator
 │
 ├── Id
 ├── Target Platform
+├── Supported Artifact Types
 ├── Templates
 ├── Configuration
 ├── Metadata
@@ -5028,6 +5030,69 @@ Completed
 
 ---
 
+## Implemented Generators (Sprint 11)
+
+### NestJS Generator (`@repo/plugins/nestjsGenerator.ts`)
+
+Produces a complete NestJS application with Prisma ORM integration:
+
+**Generated Source Files:**
+- `main.ts` — Bootstrap with dynamic port binding (`BACKEND_OS_READY:<port>`)
+- `app.module.ts` — Root module importing `PrismaModule` and all entity modules
+- `prisma/prisma.module.ts` & `prisma/prisma.service.ts` — Prisma integration
+- Per-entity: `{entity}.module.ts`, `{entity}.controller.ts`, `{entity}.service.ts`
+
+**Service Layer Characteristics:**
+- Async/await with Promise returns
+- Centralized error handling mapping Prisma codes (P2002, P2025) to HTTP exceptions
+- Input validation for required fields and ID format (numeric vs string PK)
+- Primary key preservation on updates
+
+**Controller Layer Characteristics:**
+- RESTful endpoints from Backend IR `Endpoints`
+- Parameter extraction from route paths
+- `@Body()` payload binding for POST/PUT
+- `@HttpCode(201)` for create operations
+
+**Validation & Safety:**
+- Rejects models without primary keys at generation time
+- Validates primary key field exists and is string/number type
+- Ensures foreign key fields exist on target models for relationships
+- Deterministic sorting of models, fields, and routes
+
+### Prisma Generator (`@repo/plugins/prismaGenerator.ts`)
+
+Produces a valid Prisma schema (`schema.prisma`) from Backend IR Database domain:
+
+**Responsibilities:**
+- Emits Prisma models with scalar fields mapped from Backend IR field types
+- Generates bidirectional relation fields (`@relation`) for one-to-many associations
+- Deduplicates symmetric relation indexes
+- Enforces referential integrity: foreign key must reference source primary key
+- Validates primary key existence and type compatibility
+- Rejects unsupported relation types at generation time
+- Detects field name collisions between declared fields and generated relation fields
+- Produces byte-for-byte deterministic output
+
+**Validation Rules:**
+- Every model must declare a primary key that exists in its fields
+- Primary keys must be `string` or `number` type
+- Relation `sourceField` must match the source model's primary key
+- Target foreign key field must exist and match the source primary key type
+- Only `one-to-many` relation type is supported
+- Enum field types are explicitly rejected
+- Duplicate relation aliases between same model pairs are rejected
+
+**Output Structure:**
+- `generator client { provider = "prisma-client-js" }`
+- `datasource db { provider = "postgresql", url = env("DATABASE_URL") }`
+- One `model <PascalCaseName> { ... }` block per Backend IR model
+- Scalar fields with Prisma type mapping (`String`, `Int`, `Boolean`, `DateTime`, `Json`)
+- Primary key annotations: `@id @default(uuid())` for string, `@id @default(autoincrement())` for Int
+- Relation fields with explicit `@relation("Rel_Source_Target_field")` names
+
+---
+
 ## Example
 
 ```text
@@ -5035,17 +5100,15 @@ Backend IR
 
 ↓
 
-NestJS Generator
+NestJS Generator + Prisma Generator
 
 ↓
 
 Controllers
-
 Services
-
 DTOs
-
 Prisma Schema
+Prisma Module/Service
 ```
 
 ---
@@ -5053,6 +5116,8 @@ Prisma Schema
 ## Design Notes
 
 Generators should contain no compiler logic. Their sole responsibility is translating Backend IR into framework-specific implementations.
+
+The Prisma Generator establishes the pattern for database schema generation: rigorous validation, deterministic output, and explicit error messages. Future database generators (Drizzle, TypeORM, SQLAlchemy, Entity Framework) should follow this same validation-first approach.
 
 ---
 
@@ -5219,6 +5284,7 @@ Examples:
 - Documentation
 - Asset
 - Build File
+- Database Schema
 
 ---
 
@@ -5281,6 +5347,10 @@ src/users/user.controller.ts
 src/users/user.service.ts
 
 prisma/schema.prisma
+
+prisma/prisma.module.ts
+
+prisma/prisma.service.ts
 
 package.json
 ```

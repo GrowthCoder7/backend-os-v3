@@ -2929,7 +2929,7 @@ This separation keeps the compiler completely framework independent.
 
 ---
 
-# Generation Pipeline
+## Generation Pipeline
 
 The Code Generation Framework executes generators through a deterministic pipeline.
 
@@ -2956,7 +2956,7 @@ Every generator receives the same Backend IR and Generation Context.
 
 ---
 
-# Internal Components
+## Internal Components
 
 ```text
 Code Generation Framework
@@ -2973,7 +2973,7 @@ Each component performs a dedicated responsibility.
 
 ---
 
-# Generation Context
+## Generation Context
 
 The Generation Context contains all information required during code generation.
 
@@ -2992,7 +2992,7 @@ Every generator receives the same immutable Generation Context.
 
 ---
 
-# Generator Registry
+## Generator Registry
 
 The Generator Registry maintains every generator available within the platform.
 
@@ -3006,12 +3006,13 @@ Examples include:
 - DTO Generator
 - Validation Generator
 - Documentation Generator
+- Database Schema Generator
 
 The registry itself contains no generation logic.
 
 ---
 
-# Generator Manager
+## Generator Manager
 
 The Generator Manager coordinates generator execution.
 
@@ -3027,7 +3028,7 @@ The manager ensures deterministic execution across every generation run.
 
 ---
 
-# Framework Generators
+## Framework Generators
 
 Framework Generators convert Backend IR into framework-specific implementation artifacts.
 
@@ -3045,7 +3046,83 @@ Generators must never modify Backend IR.
 
 ---
 
-# Artifact Writer
+### NestJS Generator (Implemented)
+
+The NestJS Generator produces a complete, production-ready NestJS application with the following characteristics:
+
+**Database Integration (Sprint 11+):**
+- Uses Prisma ORM for type-safe database access
+- Generates `PrismaModule` and `PrismaService` for dependency injection
+- Produces Prisma schema from Backend IR via the Prisma Generator
+- Supports both UUID (string) and auto-increment (integer) primary keys
+- Implements proper error handling for Prisma error codes (P2002 unique constraint, P2025 not found)
+
+**Generated Artifacts:**
+- `main.ts` — Application bootstrap with dynamic port binding (`BACKEND_OS_READY:<port>`)
+- `app.module.ts` — Root module importing `PrismaModule` and all entity modules
+- `prisma/prisma.module.ts` & `prisma/prisma.service.ts` — Prisma integration
+- Per-entity modules: `{entity}.module.ts`, `{entity}.controller.ts`, `{entity}.service.ts`
+- Deterministic file naming using PascalCase for classes, camelCase for files
+
+**Service Layer:**
+- Async/await throughout with proper Promise returns
+- Centralized error handling via `handleError()` mapping Prisma codes to HTTP exceptions
+- Input validation for required fields and ID format (numeric vs string PK)
+- Primary key preservation on updates
+
+**Controller Layer:**
+- RESTful endpoints mapped from Backend IR `Endpoints`
+- Parameter extraction from route paths (`:id`, `:userId`, etc.)
+- `@Body()` payload binding for POST/PUT
+- `@HttpCode(201)` for create operations
+- Proper async handler signatures
+
+**Validation & Safety:**
+- Rejects models without primary keys at generation time
+- Validates primary key field exists and is string/number type
+- Ensures foreign key fields exist on target models for relationships
+- Deterministic sorting of models, fields, and routes for reproducible output
+
+---
+
+## Database Schema Generators
+
+Database Schema Generators produce database migration artifacts and ORM schemas from Backend IR.
+
+### Prisma Generator (Implemented Sprint 11)
+
+The Prisma Generator transforms the Backend IR Database domain into a valid Prisma schema (`schema.prisma`).
+
+**Responsibilities:**
+- Emits Prisma models with scalar fields mapped from Backend IR field types
+- Generates bidirectional relation fields (`@relation`) for one-to-many associations
+- Deduplicates symmetric relation indexes (prevents duplicate `postList` / `userRef`)
+- Enforces referential integrity: foreign key must reference source primary key
+- Validates primary key existence and type compatibility (string ↔ string, number ↔ number)
+- Rejects unsupported relation types (many-to-many, many-to-one) at generation time
+- Detects field name collisions between declared fields and generated relation fields
+- Produces byte-for-byte deterministic output regardless of relation declaration order
+
+**Validation Rules:**
+- Every model must declare a primary key that exists in its fields
+- Primary keys must be `string` or `number` type
+- Relation `sourceField` must match the source model's primary key
+- Target foreign key field must exist and match the source primary key type
+- Only `one-to-many` relation type is supported
+- Enum field types are explicitly rejected (not silently converted)
+- Duplicate relation aliases between same model pairs are rejected
+
+**Output:**
+- `generator client { provider = "prisma-client-js" }`
+- `datasource db { provider = "postgresql", url = env("DATABASE_URL") }`
+- One `model <PascalCaseName> { ... }` block per Backend IR model
+- Scalar fields with Prisma type mapping (`String`, `Int`, `Boolean`, `DateTime`, `Json`)
+- Primary key annotations: `@id @default(uuid())` for string, `@id @default(autoincrement())` for Int
+- Relation fields with explicit `@relation("Rel_Source_Target_field")` names
+
+---
+
+## Artifact Writer
 
 The Artifact Writer is responsible for producing the generated project on disk.
 
@@ -3061,7 +3138,7 @@ Artifact Writers never make architectural decisions.
 
 ---
 
-# Template Engine
+## Template Engine
 
 The Template Engine converts generator output into source files.
 
@@ -3077,7 +3154,7 @@ Template rendering should remain deterministic.
 
 ---
 
-# Generation Lifecycle
+## Generation Lifecycle
 
 Every generation follows the same lifecycle.
 
@@ -3104,7 +3181,7 @@ Generation never modifies Backend IR.
 
 ---
 
-# Generator Interface
+## Generator Interface
 
 Every framework generator should implement a common interface.
 
@@ -3122,7 +3199,7 @@ This interface enables generators to be interchangeable while maintaining a cons
 
 ---
 
-# Generation Result
+## Generation Result
 
 Successful generation produces:
 
@@ -3139,7 +3216,7 @@ Generated Artifacts become the production-ready backend project.
 
 ---
 
-# Dependencies
+## Dependencies
 
 The Code Generation Framework depends on:
 
@@ -3158,7 +3235,7 @@ Compilation has already completed.
 
 ---
 
-# Constraints
+## Constraints
 
 The Code Generation Framework must satisfy the following constraints.
 
@@ -3196,7 +3273,7 @@ Generation should produce reproducible project structures across environments.
 
 ---
 
-# Extension Points
+## Extension Points
 
 Future capabilities may include:
 
@@ -3206,16 +3283,19 @@ Future capabilities may include:
 - Remote generators
 - Plugin-defined generators
 - Custom templates
+- Multi-database provider support (MySQL, SQLite, SQL Server)
 
 Extensions should integrate through the existing generator architecture.
 
 ---
 
-# Future Evolution
+## Future Evolution
 
 The Code Generation Framework is expected to remain the implementation layer of Backend OS.
 
 As new backend frameworks emerge, additional generators should be introduced without requiring changes to the Compiler Pipeline or Backend IR, preserving the separation between architecture compilation and framework-specific implementation.
+
+The Prisma Generator establishes the pattern for database schema generation: rigorous validation, deterministic output, and explicit error messages. Future database generators (Drizzle, TypeORM, SQLAlchemy, Entity Framework) should follow this same validation-first approach.
 
 # 14. Plugin System
 

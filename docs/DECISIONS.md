@@ -248,11 +248,14 @@ The AI model was updated to `gemini-3.6-flash` for improved performance and cost
 The `@repo/intent` package refined its deterministic translation to better preserve operation ordering and intermediate state management.
 
 The `@repo/store` graph store continues to expose the canonical
-`applyIntent` boundary and surfaces executor/intent failures through
-its existing success/message contract, maintaining backward
-compatibility without adding a `diagnostics` field to the public API.
-If diagnostics are added to the return type in the future, a new ADR
-(D-012) should document that change rather than amending D-010.
+  `applyIntent` boundary and surfaces executor/intent failures through
+  its existing success/message contract, maintaining backward
+  compatibility without adding a `diagnostics` field to the public API.
+  If diagnostics are added to the public return type in the future, the
+  public-contract change must follow the applicable RFC/ADR process and be
+  recorded under the next available ADR identifier at the time the proposal
+  is made. D-010 remains a historical record and must not be amended to
+  document that future change.
 
 Context serialization in `@repo/ai` was updated to return arrays of entity/field information rather than single objects, ensuring deterministic processing.
 
@@ -271,9 +274,6 @@ Sprint 8 implementation was iteratively verified through:
 The final presentation-ready MVP state was established after resolving
 the Sprint 8 integration and type-contract issues encountered during
 implementation.
-
-If you have a final terminal log showing the exact successful commands,
-we can make this even stronger.
 
 ### Consequences
 
@@ -336,4 +336,88 @@ The implemented `HistoryEngine` records **full Architecture Graph snapshots** fo
 
 This differs from the conceptual **operation-level History Entry** model described in the Domain Model Specification (PART IV, Section 13), which envisions an audit log of individual Architecture Operations with metadata (timestamp, source, user, etc.). The current implementation does not persist an operation-level audit log, does not record operation metadata beyond the resulting graph state, and does not implement durable persistence of history across sessions.
 
-The snapshot-based approach is sufficient for the current in-memory undo/redo use case. A future ADR (D-012 or later) should address the transition to operation-level audit logging if durable history, collaboration, or compliance requirements emerge.
+The snapshot-based approach is sufficient for the current in-memory undo/redo use case. A future ADR, using the next available ADR identifier at the time the proposal is made, should address the transition to operation-level audit logging if durable history, collaboration, or compliance requirements emerge. D-011 documents the current snapshot-based implementation and does not itself authorize a change to the domain model.
+
+---
+
+# D-012 — Generated-Backend PostgreSQL Persistence & Relational Integration (Sprint 11)
+
+**Date:** 2026-10-19  
+**Category:** Engineering / Implementation  
+**Status:** Accepted
+
+### Context
+
+Sprints 1–10 established the complete Editing Engine (entities, relations, endpoints, events, workflows), AI intent interpretation, History Engine, and in-memory NestJS code generation with HTTP CRUD verified against an ephemeral in-memory store. Sprint 11 introduces PostgreSQL/Prisma persistence for data stored by generated backend applications, including relational-integrity enforcement verified through isolated test databases.
+
+### Decision
+
+1. **Prisma Generator (`@repo/plugins/prismaGenerator.ts`)**: Rewritten as a validation-first schema generator that:
+   - Emits Prisma models from Backend IR Database domain with scalar field type mapping
+   - Generates bidirectional `@relation` fields for one-to-many associations with deduplication
+   - Enforces referential integrity: FK must reference source PK, types must match exactly
+   - Rejects unsupported relation types (many-to-many, many-to-one) and enum fields at generation time
+   - Detects field name collisions between declared fields and generated relation fields
+   - Produces byte-for-byte deterministic output regardless of relation declaration order
+
+2. **NestJS Generator (`@repo/plugins/nestjsGenerator.ts`)**: Migrated from in-memory Map to Prisma ORM:
+   - Generates `PrismaModule`/`PrismaService` for DI; imports `PrismaModule` in `AppModule`
+   - Services are async with centralized `handleError()` mapping Prisma codes (P2002→ConflictException, P2025→NotFoundException)
+   - Supports both UUID (string) and auto-increment (Int) primary keys with runtime ID parsing/validation
+   - Validates required fields on create/update; preserves PK on update
+   - Deterministic sorting of models, fields, routes for reproducible output
+   - Generation-time validation: rejects missing PK, missing PK field, unsupported PK type
+
+3. **Runtime Orchestrator (`@repo/runtime/src/orchestrator.ts`)**: Security-hardened test database management:
+   - `validateTestDatabaseUrl()` enforces postgres(sql) protocol, loopback hosts (localhost/127.0.0.1/::1/host.docker.internal), test DB naming convention (`test`/`test_*`/`*_test`), and explicit `?schema=` parameter matching `^test_[a-zA-Z0-9_]+$` (≤63 chars)
+   - `prepareDatabase()` runs `prisma db push` against isolated schema
+   - `cleanupDatabase()` executes `DROP SCHEMA IF EXISTS "schema" CASCADE` via `prisma db execute`
+   - E2E integration test suite (`e2e.integration.test.ts`) verifies: live HTTP CRUD, FK constraint rejection (P2003→500), persistence across process restart, proper cleanup order (child before parent)
+
+### Verification
+
+The following verification results were recorded for the Sprint 11
+generated-backend persistence work:
+
+- Focused Prisma and NestJS generator test suites: 20/20 tests passed in
+  total. Coverage includes relation generation, primary/foreign-key
+  validation, unsupported relation mappings, field collisions, required
+  field handling, error mapping, and deterministic generation.
+- Runtime E2E integration suite
+  (`packages/runtime/src/__tests__/e2e.integration.test.ts`): 8/8 tests
+  passed. Coverage includes materialization, dependency installation,
+  database preparation, build, startup readiness, live HTTP CRUD,
+  foreign-key integrity, restart, data persistence across restart, and cleanup.
+- Docker build-check image:
+  `docker build -f Dockerfile.build -t backend-os-build-check .`
+  completed successfully.
+- Docker-invoked type-check:
+  `docker run --rm --entrypoint pnpm backend-os-build-check check-types`
+  exited successfully. The configured Turborepo task graph executed the
+  `@repo/ui` and `web` type-check tasks only. This result must not be
+  represented as a successful type-check of every monorepo package.
+
+These results verify the stated scopes only. The exact test invocation should
+be retained with the corresponding test log; do not infer or invent a
+command that is not present in the recorded evidence.
+
+### Consequences
+
+**Scope Boundary**
+
+This decision applies to PostgreSQL/Prisma persistence inside generated
+backend applications. It does not implement persistence or restoration of
+Backend OS Projects, Project Configuration, Architecture Graphs, UI state,
+or project metadata. Those are platform-side project lifecycle concerns and
+must be implemented against the canonical Project and Architecture Graph
+contracts. D-012 does not resolve the stable-identity contract gap described
+in the Master Context.
+
+- Generated backend applications now target PostgreSQL via Prisma ORM with
+  relational-integrity behavior verified by the Sprint 11 test suite.
+- Prisma Generator establishes validation-first pattern for future database generators (Drizzle, TypeORM, SQLAlchemy, Entity Framework)
+- Runtime Orchestrator provides secure, schema-isolated test infrastructure for CI/CD
+- NestJS Generator error handling maps Prisma codes to semantic HTTP exceptions
+- Deterministic byte-for-byte generator output enables reliable caching and incremental builds
+- Architecture Graph schema and compiler architecture required no changes — persistence is a generation concern
+- The `@repo/plugins` package now exports both generators with comprehensive test coverage
