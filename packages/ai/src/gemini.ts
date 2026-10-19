@@ -6,7 +6,7 @@ import { AIError } from "./errors";
 import { withRetry } from "./retry";
 import { serializeGraphContext } from "./context";
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
