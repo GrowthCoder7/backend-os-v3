@@ -153,7 +153,7 @@ The following have been finalized:
 - Backend IR to NestJS code generation (with Prisma ORM)
 - Prisma schema generation from Backend IR
 - End-to-end materialize → install → build → start → HTTP CRUD pipeline
-- PostgreSQL/Prisma persistence for generated backend applications, including relational integrity
+- PostgreSQL persistence with relational integrity
 - AI intent interpretation using Gemini
 - History Engine with undo/redo (max depth 50)
 - Runtime Orchestrator with schema-isolated test database management
@@ -219,16 +219,6 @@ Current progress includes, but is not limited to:
     and persistence across process restart.
   - All generators produce byte-for-byte deterministic output.
   - Sprint 11 verified via `verify-sprint11.ts` and Vitest E2E suite.
-- Sprint 12 — Guided Run and API Cockpit: planned scope includes Backend OS
-  project lifecycle/persistence, guided runtime execution, an API cockpit,
-  and a repeatable TaskFlow demonstration. These capabilities must not be
-  marked complete until supported by repository-backed verification and
-  actual product testing.
-
-Sprint 12 project persistence is distinct from Sprint 11's PostgreSQL/Prisma
-persistence for application data in generated backends. The stable-identity
-contract blocker remains applicable to durable project persistence until an
-appropriate decision is formally accepted.
 
 Implementation status is expected to evolve continuously while the architecture remains stable.
 
@@ -2578,27 +2568,32 @@ Development is focused on constructing the compiler platform rather than refinin
 
 # Current Focus
 
-The current planned product milestone is Sprint 12 — Guided Run and API
-Cockpit. Architecture Version 1.0 remains frozen.
+The planned product milestone is Sprint 12 — Guided Run and API Cockpit.
+Architecture Version 1.0 remains frozen. The sprint must extend the existing
+platform through approved contracts and must not introduce an architectural
+redesign.
 
-The primary workstreams are:
+Current workstreams are:
 
-- Resolve the stable-identity contract blocker before implementing durable
-  Backend OS project persistence.
-- Implement the Backend OS project lifecycle: create, list, open, save,
-  rename, delete, and supported import/export operations.
-- Implement a guided validation, generation, materialization, installation,
-  database preparation, build, and startup workflow with truthful stage
-  progress, readiness, logs, and failure diagnostics.
-- Implement an API cockpit derived from the compiled Backend IR route
-  catalog, with safe request execution and inspectable response details.
-- Complete a repeatable TaskFlow demonstration covering project restoration,
-  generated-backend CRUD, relational integrity, restart, and recovery.
-- Preserve the Sprint 11 regression baseline and verify all builds, tests,
-  and type-checks through Docker.
+- **Project lifecycle and persistence:** establish a repository-backed,
+  provider-independent contract for project creation, listing, opening,
+  saving, renaming, deletion, and supported import/export. Durable persistence
+  implementation remains gated on source-level verification and formal
+  resolution of the documented stable-identity discrepancy.
+- **Guided runtime execution:** expose truthful stage progress, readiness,
+  logs, stage-specific failure reporting, and recovery using the existing
+  materializer and runtime orchestrator.
+- **API cockpit:** derive its route catalogue from compiled Backend IR and
+  provide safe request execution with inspectable HTTP results.
+- **Repeatable TaskFlow demonstration:** exercise project restoration, API
+  CRUD, relational integrity, stop/restart data preservation, and recovery.
+- **Regression and release evidence:** preserve Sprint 11 behavior and run
+  build, type-check, and test commands through Docker. Record actual command
+  scope and outcomes rather than relying on implementation-agent claims.
 
-Sprint 12 does not include deployment-provider integration. New capabilities
-must preserve the frozen architecture and existing package boundaries.
+Deployment-provider integration is outside Sprint 12. Project-side persistence
+must not be confused with PostgreSQL/Prisma persistence inside generated
+backend applications.
 
 ---
 
@@ -3116,28 +3111,43 @@ Package status reflects implementation maturity rather than code volume.
 
 # Current Engineering Priorities
 
-Near-term priorities include:
+Sprint 12 is the current planned product milestone. The priorities below are
+sequenced to protect the frozen Architecture V1.0 and the verified Sprint 11
+baseline.
 
-1. Author the Sprint 6 behavioral verification harness (`verify-sprint6-ai.ts`) and run it against the actual repository.
-2. Wire the `@repo/ai` provider into the web application as an additional Architecture Operation producer.
-3. Eliminate direct graph mutation in `@repo/store` for relations, endpoints, events, and workflows — route all remaining domains through the Operation Executor to satisfy the single-editing-pipeline invariant.
-4. Remove the legacy `runtime/ExecutionEngine.ts` manifest ingestor (or formally retire it via an ADR) to consolidate the runtime surface on `ProjectMaterializer` + `RuntimeOrchestrator`.
-5. Expand the Editor surface in the Visual Builder (Endpoint Builder, Relation Builder, Workflow Builder, Event Builder).
-6. Mature the compiler pipeline with explicit normalization and optimization passes.
-7. Continue Editing Engine capabilities including history, undo/redo, and additional mutation domains.
+1. **P12-00 — Contract and repository verification.** Inspect the actual
+   TypeScript domain types, store mutations, history implementation, project
+   UI, and any existing persistence utilities. Separate source-verified facts
+   from documentation-based assumptions. Resolve the documented stable-
+   identity discrepancy through the formal decision process before durable
+   project persistence depends on it.
+2. **P12-01 — Project lifecycle and persistence.** Once the contract gate is
+   cleared, provide create/list/open/save/rename/delete and defined
+   import/export behavior. Preserve project isolation, atomic writes,
+   complete round-trip serialization, visible save states, and the previous
+   valid save on failure.
+3. **P12-02 — Guided generation and runtime lifecycle.** Present validation,
+   generation, materialization, installation, database preparation, build,
+   startup, and readiness with truthful progress and stage-specific errors.
+   Stop, Restart, and explicit Reset/Cleanup must have distinct, tested
+   semantics.
+4. **P12-03 — API cockpit.** Derive available methods and paths from Backend
+   IR; safely execute requests; show status, response body, relevant headers,
+   duration, and stable error outcomes.
+5. **P12-04 — TaskFlow demonstration and acceptance.** Verify project save/load,
+   generated CRUD, relational-integrity behavior, restart persistence, and
+   recovery from a controlled failure.
+6. **P12-05 — Regression and evidence.** Preserve Sprint 11 E2E (8/8) and
+   generator regression behavior. Run tests and type-checks through Docker,
+   and accurately document which workspace tasks were actually executed.
 
-Sprint 1 established the initial Operation → Executor → Graph integration path.
-Sprint 2 completed the entity lifecycle execution slice.
-Sprint 3 completed the relation and endpoint lifecycle execution slice.
-Sprint 4 completed the deterministic NestJS generation framework.
-Sprint 5 completed end-to-end materialize-build-start-assert runtime orchestration.
-Sprint 6 introduced AI intent interpretation and backend integration.
-Sprint 7 integrated the AI capability into the platform/UI surface.
-Sprint 8 completed context-aware AI, retry/recovery, diagnostics integration,
-and established the presentation-ready MVP checkpoint.
+The project-persistence implementation gate is not considered satisfied by
+this roadmap entry alone. Implementation must not introduce an unapproved
+identity scheme or contradict the Domain Model Specification.
 
-Future work should extend this foundation rather than introduce parallel
-mutation paths.
+Completed sprint summaries above remain historical records; they are not
+current work items. Future work should extend the platform rather than create
+parallel mutation paths.
 
 ---
 
@@ -3145,30 +3155,36 @@ mutation paths.
 
 Known areas requiring future refinement include:
 
-- Placeholder implementations
-- Temporary abstractions
-- Incomplete compiler passes (no explicit normalization or optimization passes yet)
-- Missing optimization stages
-- Builder consistency improvements
-- Legacy `runtime/ExecutionEngine.ts` (`CompilerManifest` ingestor) is superseded by the Sprint 5 `ProjectMaterializer` + `RuntimeOrchestrator` surface and remains in the package as abandoned scaffolding.
-- `compiler/index.ts` does not currently export `CompilerManifest` referenced by the legacy runtime `ExecutionEngine`; the legacy surface is therefore non-functional and should be removed.
-- **Backend OS Project Persistence Gap:** Durable persistence and restoration
-  of the Backend OS Project and Architecture Graph are not yet implemented
-  and verified. The graph currently resides in the in-memory Zustand store.
-  This is separate from Sprint 11's PostgreSQL/Prisma persistence for
-  application data in generated backend applications.
+- Incomplete compiler passes; explicit normalization and optimization passes
+  remain outstanding.
+- Builder consistency and user-experience improvements.
+- Legacy `runtime/ExecutionEngine.ts` (`CompilerManifest` ingestor) is
+  superseded by the `ProjectMaterializer` + `RuntimeOrchestrator` runtime
+  surface and remains abandoned scaffolding.
+- `compiler/index.ts` does not currently export `CompilerManifest` referenced
+  by the legacy runtime `ExecutionEngine`; the legacy surface is therefore
+  non-functional and should be removed through a scoped implementation task.
+- **Backend OS project persistence gap:** durable persistence and restoration
+  of the platform's own Project and Architecture Graph are not documented as
+  implemented and verified. This is separate from Sprint 11 PostgreSQL/Prisma
+  persistence for data stored by generated backend applications. The actual
+  current store and adapter implementation must be inspected before asserting
+  that no persistence adapter exists.
+- **Stable-identity contract gap — P12-01 blocker:** the canonical Domain Model
+  requires stable immutable identifiers, while the Master Context has recorded
+  a discrepancy involving lookup keys. That implementation claim must be
+  rechecked against physical source files and reconciled through the formal
+  decision process. Do not treat the lookup details as source-verified based
+  solely on this document, weaken canonical identity requirements, or start
+  durable persistence against an unapproved identity scheme.
+- Sprint behavioral verification is recorded in repository-resident harnesses
+  through Sprint 10 and in the Sprint 11 integration suite. Later work must
+  preserve and extend these tests using actual Docker-run evidence.
+- Monorepo type-check orchestration remains dependent on workspace task
+  configuration. Reports must distinguish selected workspace tasks from a
+  genuinely repository-wide check.
 
-- **Stable Identity Contract Gap — Blocking P12-01:** The Domain Model
-  Specification requires stable, immutable identifiers for projects and
-  architectural objects. The current implementation uses name-based lookup
-  or composite keys for some architectural objects. This creates a risk
-  for durable serialization, restoration, and referential integrity.
-  Resolve the discrepancy through the applicable formal decision process
-  before implementing durable project persistence. Do not silently weaken
-  the canonical domain-model requirements or introduce an unapproved
-  identity scheme.
-
-Technical debt should remain visible and intentionally managed.
+Technical debt should remain visible, scoped, and intentionally managed.
 
 ---
 
@@ -3493,138 +3509,150 @@ Prepare Backend OS for production adoption.
 
 ---
 
-# Milestone 9 — Backend OS Project Persistence and Restoration (Sprint 12)
+# Milestone 9 — Generated-Backend Persistence and Relational Integration (Sprint 11)
 
 ## Objective
 
-Implement durable persistence and faithful restoration of Backend OS Projects
-and their Architecture Graphs. This milestone concerns the platform's own
-project data, not the application records stored by generated backends.
+Generate backend applications with PostgreSQL/Prisma persistence and verify
+relational integrity without changing the Architecture Graph or compiler
+architecture.
 
-## Scope
+## Scope Delivered
 
-- Resolve the documented stable-identity contract discrepancy through the
-  formal decision process before implementing durable persistence.
-- Serialize and restore the Project, Project Configuration, Architecture
-  Graph, project metadata, and applicable schema/compiler version metadata
-  using the approved canonical domain contracts.
-- Support the required project lifecycle operations: create, list, open,
-  save, rename, and delete, along with explicitly supported import/export.
-- Preserve graph structure, identifiers, references, metadata, and graph
-  version without information loss.
-- Validate restored data before making the restored project the active
-  project or replacing the current graph.
-- Integrate project loading with the existing store and history lifecycle,
-  establishing a new history baseline using the existing history-reset
-  mechanism.
-- Handle invalid, incompatible, unavailable, or corrupt saved data without
-  partially overwriting the active project or the last valid saved version.
-- Keep the persistence implementation behind a provider-independent
-  boundary. Do not claim cloud or cross-device synchronization unless that
-  capability is separately designed and implemented.
+- Validation-first Prisma schema generation from Backend IR.
+- Supported one-to-many relation generation, primary/foreign-key validation,
+  type matching, collision detection, and deterministic output.
+- NestJS services backed by Prisma, with centralized handling of relevant
+  database error codes and required-field validation.
+- Runtime orchestration for materializing, installing, preparing a test
+  database schema, building, starting, and cleaning up generated applications.
+- End-to-end verification of CRUD, foreign-key integrity, restart behavior,
+  data persistence across process restart, and cleanup.
 
-## Success Criteria
+## Verification Record
 
-- A project can be created, saved, listed, reopened, and restored after a
-  browser refresh or a new application session.
-- All architectural changes committed through the canonical editing
-  pipeline are preserved by the project's save behavior.
-- Separate projects remain isolated and cannot overwrite each other's graph.
-- The restored graph preserves architecture and metadata without loss.
-- A restored graph passes validation and compiles deterministically to an
-  equivalent Backend IR.
-- History is reset to the restored graph as its new baseline.
-- Invalid or incompatible saved data produces a clear diagnostic and does
-  not corrupt the active project.
-- Save failures are visible to the user and do not silently report success.
+Sprint 11's Runtime E2E suite was reported as passing 8/8 tests. Focused
+semantic/compiler/plugin tests were reported as 29/29 passing, including 20/20
+focused Prisma/NestJS generator tests. The Docker image build
+`docker build -f Dockerfile.build -t backend-os-build-check .` succeeded.
+The Docker-invoked command
+`docker run --rm --entrypoint pnpm backend-os-build-check check-types`
+exited successfully but executed only the configured `@repo/ui` and `web`
+type-check tasks. It is not evidence that every monorepo package was checked.
+`git diff --check` passed, with a benign line-ending warning reported for
+`packages/ai/src/gemini.ts`.
 
-## Contract Blocker
+These results apply to the recorded scopes only. Do not describe Sprint 11 as
+having delivered durable persistence for Backend OS Projects or Architecture
+Graphs.
 
-The stable-identity discrepancy described under Active Technical Debt must
-be resolved through an accepted formal decision before durable persistence
-depends on stable identifiers. The implementation must follow the approved
-decision and the existing Architecture and Domain Model specifications.
+**Status:** Completed for the documented generated-backend persistence scope.
 
-This blocker concerns Backend OS project persistence. It does not invalidate
-Sprint 11's verified PostgreSQL/Prisma persistence for generated backend
-applications.
+---
 
-**Status:** Blocked pending formal resolution of the stable-identity contract.
-
-# Milestone 10 — Guided Run and API Cockpit (Sprint 12)
+# Milestone 10 — Backend OS Project Persistence and Restoration (Sprint 12)
 
 ## Objective
 
-Provide a complete, guided path from architecture validation to running and
-testing the generated backend, with observable progress, safe API requests,
-and reliable recovery behavior.
+Implement durable, provider-independent persistence and faithful restoration
+of Backend OS Projects and their Architecture Graphs using the approved
+canonical domain contracts.
 
 ## Scope
 
-### Guided Run
-
-- Guide the user through validation, generation, materialization,
-  dependency installation, database preparation, build, startup, and
-  readiness.
-- Report the actual current stage, progress, logs, and stage-specific
-  failures.
-- Never report READY when validation, build, startup, or readiness has failed.
-- Preserve sufficient diagnostics to explain a failed run and support recovery.
-
-### Runtime Lifecycle
-
-- Define Stop, Restart, and Reset/Cleanup as distinct operations.
-- Stop terminates the running process without deleting the generated
-  project directory, database schema, or application data.
-- Restart reuses the same generated project and isolated database so
-  existing application records survive.
-- Reset/Cleanup is an explicit operation, restricted to safely identified
-  test resources, with cleanup failures reported rather than silently hidden.
-- Never drop an arbitrary or production database.
-
-### API Cockpit
-
-- Derive the available routes and supported methods from the compiled
-  Backend IR route catalog.
-- Support controlled request execution with method, path, query parameters,
-  headers, and body where applicable.
-- Display the HTTP status, response body, relevant response headers,
-  and request duration.
-- Reject invalid or unsafe paths and unsupported routes without forwarding
-  an unintended request.
-- Use bounded timeouts and safe error messages. Do not expose secrets or
-  internal runtime details in user-facing errors or logs.
-
-### Repeatable TaskFlow Demonstration
-
-- Use a stable TaskFlow project fixture containing User and Task entities,
-  the approved relationship, and the relevant CRUD endpoints.
-- Demonstrate project save/reopen and graph restoration.
-- Demonstrate generated-backend CRUD and relational-integrity behavior.
-- Demonstrate Stop and Restart without loss of application records.
-- Demonstrate a recoverable validation, build, or startup failure.
+- Complete repository-backed verification of Project, Project Configuration,
+  Architecture Graph, store mutations, history reset behavior, project UI,
+  and existing serialization/storage utilities.
+- Resolve the documented stable-identity discrepancy through the formal
+  decision process before persistence depends on the affected identifiers.
+- Define create, list, open, save/update, rename, delete, and import/export
+  semantics with typed outcomes and explicit identity-conflict handling.
+- Preserve project metadata, architecture structure, references, stable
+  identities, graph version, serialization schema version, and required
+  compiler metadata without loss or duplicate editable graph state.
+- Ensure a failed save preserves the previous complete persisted project.
+- Validate candidate payloads before activation; preserve the current project,
+  graph, and history if restoration fails.
+- Restore history to a fresh baseline only after successful activation.
+- Keep storage provider-independent. IndexedDB may be selected only after
+  the existing repository and contract have been inspected; cloud/cross-device
+  synchronization is not implied.
 
 ## Success Criteria
 
-- A user can complete the guided workflow from a valid architecture to a
-  ready generated backend without manually coordinating each runtime stage.
-- Stage progress and failure reporting match the actual runtime lifecycle.
-- The API cockpit executes requests against the intended running instance
-  and displays the actual HTTP responses.
-- Stop and Restart preserve generated-backend data; Reset/Cleanup is
-  explicit and constrained to safe test resources.
-- The TaskFlow demonstration can be repeated from a known project fixture.
-- Sprint 11 E2E and generator regressions continue to pass.
-- Build, test, and type-check results are recorded with the exact scope
-  verified. All such commands are executed through Docker.
+- Create/list/open/save/rename/delete work with clear conflict and not-found
+  semantics; import/export behavior is explicitly defined and tested.
+- Projects remain isolated from one another.
+- A successful save survives refresh and a new application session.
+- Round-trip serialization preserves the complete project and graph.
+- Concurrent or out-of-order saves cannot silently replace a newer revision
+  with an older snapshot.
+- Corrupt, incompatible, or unavailable data does not partially replace the
+  active project or destroy its last valid save.
+- Save states accurately represent unsaved edits, in-flight saves, success,
+  and failure.
+- Successful restoration establishes a new history baseline while later
+  undo/redo remains functional.
+
+## Contract Gate
+
+The Master Context records a stable-identity discrepancy. Its precise current
+implementation details remain subject to source-level verification. P12-01
+must not proceed to durable-persistence implementation until the discrepancy
+has been inspected and formally resolved. No unapproved identity scheme may
+be introduced and no canonical identity requirement may be weakened.
+
+**Status:** Blocked pending source verification and formal resolution of the
+stable-identity contract.
+
+---
+
+# Milestone 11 — Guided Run and API Cockpit (Sprint 12)
+
+## Objective
+
+Deliver a guided workflow from a validated architecture to a running generated
+backend, with safe API execution, runtime observability, and repeatable recovery.
+
+## Scope
+
+- Show actual validation, generation, materialization, installation, database
+  preparation, build, startup, and readiness stages.
+- Report the stage that truly failed; never report READY after failed startup
+  or readiness checks.
+- Keep Stop, Restart, and Reset/Cleanup distinct. Stop and Restart preserve
+  generated files, database schema, and application data. Destructive cleanup
+  is explicit, limited to verified test resources, and reports failures.
+- Build the route catalogue from compiled Backend IR and validate requests
+  before forwarding them to the run-owned local port.
+- Show actual HTTP status, response body, relevant safe response headers,
+  duration, timeout, and bounded error outcomes.
+- Apply input validation, request/response size limits, timeouts, and safe
+  logging/error redaction.
+- Demonstrate the workflow with a repeatable TaskFlow fixture and preserve
+  the Sprint 11 regression baseline.
+
+## Success Criteria
+
+- The guided run reaches READY only after the actual application is ready.
+- Failure recovery reruns necessary prerequisite stages and reports cleanup
+  errors without masking the primary failure.
+- API requests are routed only to paths/methods permitted by Backend IR, with
+  unsafe/malformed paths rejected before forwarding.
+- Stop/Restart preserve application rows; Reset/Cleanup is explicit and safe.
+- TaskFlow demonstrates project restoration (once P12-01 is unblocked), CRUD,
+  relational integrity, restart data preservation, and failure recovery.
+- All builds, tests, and type-check commands run through Docker, and recorded
+  evidence states the exact scope and observed results.
 
 ## Scope Exclusion
 
-Deployment-provider integration is outside Sprint 12 and must not be added
-as an unplanned dependency.
+Deployment-provider integration is not part of Sprint 12.
 
-**Status:** Planned; implementation and acceptance remain subject to
+**Status:** Planned; implementation remains subject to contract review and
 repository-backed verification.
+
+---
 
 Beyond Version 1.0, Backend OS may expand into additional areas, including:
 
@@ -3680,15 +3708,14 @@ Unlike source code, which explains *how* the platform works, this section explai
 
 ---
 
-# Architectural and Implementation Decision Index
+# Architectural Decision Records (ADR Index)
 
-Architectural decisions and accepted engineering/implementation decisions
-are maintained as distinct record types. Architectural decisions follow the
-RFC/ADR process; engineering and implementation decisions are recorded in
-`DECISIONS.md` and do not override higher-authority specifications.
+Major architectural decisions should be documented as individual Architectural Decision Records (ADRs).
+
+This document maintains an index of those records.
 
 | Record | Title | Record Type | Status |
-|--------|-------|-------------|--------|
+|---------|-------|-------------|--------|
 | ADR-001 | Architecture Graph as the Single Source of Truth | Architectural ADR | Accepted |
 | ADR-002 | Architecture Operations for All Mutations | Architectural ADR | Accepted |
 | ADR-003 | Centralized Operation Executor | Architectural ADR | Accepted |
@@ -3704,7 +3731,11 @@ RFC/ADR process; engineering and implementation decisions are recorded in
 | D-009 | AI Intent Translation Boundary | Engineering / Implementation | Accepted |
 | D-010 | AI Model and Graph Store Refinements (Sprint 8) | Engineering / Implementation | Accepted |
 | D-011 | History Engine and Undo/Redo (Sprint 9) | Engineering / Implementation | Accepted |
-| D-012 | Generated-Backend PostgreSQL Persistence & Relational Integration (Sprint 11) | Engineering / Implementation | Accepted |
+| D-012 | Generated-Backend PostgreSQL Persistence and Relational Integration (Sprint 11) | Engineering / Implementation | Accepted |
+
+Future architectural changes should introduce new ADRs rather than modifying historical records.
+
+Accepted ADRs should remain immutable.
 
 ---
 
